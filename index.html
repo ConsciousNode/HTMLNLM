@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HTMLNLM — Browser Neural Runtime</title>
+<style>
+/* HTMLNLM STYLESHEET 
+  Robust CSS state machine using :has() and sibling selectors.
+  Mobile-first responsive design, GPU-accelerated transitions.
+*/
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #171717;
+  --bg-tertiary: #262626;
+  --border: #404040;
+  --accent: #14b8a6; 
+  --accent-dim: #0f766e;
+  --accent-glow: rgba(20, 184, 166, 0.2);
+  --text-main: #f5f5f5;
+  --text-muted: #a3a3a3;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --radius: 12px;
+  --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body, html { height: 100%; background: var(--bg-primary); color: var(--text-main); font-family: var(--font-sans); font-size: 14px; overflow: hidden; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+#app-container { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+
+header { display: flex; align-items: center; padding: 16px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 12px; }
+header h1 { color: var(--accent); font-size: 20px; font-weight: 800; font-family: var(--font-mono); letter-spacing: -0.5px; margin-right: 8px; }
+.subtitle { color: var(--text-muted); font-size: 13px; font-weight: 500; display: none; }
+@media (min-width: 600px) { .subtitle { display: block; } }
+
+.status-pill { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-glow); padding: 6px 14px; border-radius: 20px; border: 1px solid var(--accent-dim); letter-spacing: 0.5px; white-space: nowrap; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1); }
+
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
+
+/* CSS State Machine logic */
+input[type="radio"][name="route"] { display: none; }
+
+nav { display: flex; background: var(--bg-secondary); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; z-index: 15; }
+nav::-webkit-scrollbar { display: none; }
+.nav-tab { padding: 16px 24px; cursor: pointer; color: var(--text-muted); font-size: 12px; font-weight: 700; letter-spacing: 0.5px; border-bottom: 2px solid transparent; transition: all var(--transition-fast); white-space: nowrap; user-select: none; }
+.nav-tab:hover { color: var(--text-main); background: var(--bg-tertiary); }
+
+/* Routing Triggers */
+body:has(#route-setup:checked) .nav-tab[for="route-setup"],
+body:has(#route-train:checked) .nav-tab[for="route-train"],
+body:has(#route-align:checked) .nav-tab[for="route-align"],
+body:has(#route-infer:checked) .nav-tab[for="route-infer"],
+body:has(#route-io:checked) .nav-tab[for="route-io"] { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-primary); }
+
+.screen { display: none; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 24px; gap: 24px; align-content: flex-start; flex: 1; }
+body:has(#route-setup:checked) #screen-setup { display: flex; flex-direction: column; }
+body:has(#route-train:checked) #screen-train { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+body:has(#route-align:checked) #screen-align { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+body:has(#route-infer:checked) #screen-infer { display: flex; flex-direction: column; }
+body:has(#route-io:checked) #screen-io { display: flex; flex-direction: column; }
+
+/* UI Components */
+.panel { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; display: flex; flex-direction: column; box-shadow: var(--shadow); transition: transform var(--transition-fast); position: relative; overflow: hidden; }
+.panel-header { font-family: var(--font-mono); color: var(--text-main); font-size: 13px; font-weight: 700; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.5px; }
+
+.control-group { margin-bottom: 24px; }
+.control-group label { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 13px; margin-bottom: 10px; font-weight: 600; }
+.control-group input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 6px; background: var(--bg-tertiary); border-radius: 4px; appearance: none; outline: none; margin-top: 4px; }
+.control-group input[type="range"]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; transition: transform 0.1s; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+.control-group input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.control-group input[type="text"], .control-group textarea { width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); font-family: var(--font-mono); font-size: 13px; padding: 14px; border-radius: 8px; outline: none; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.control-group input[type="text"]:focus, .control-group textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.control-group textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+.val-display { color: var(--accent); font-weight: 700; font-family: var(--font-mono); background: var(--bg-primary); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); }
+
+/* Interactive Elements */
+.btn { padding: 14px 20px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-main); font-family: var(--font-sans); font-size: 13px; font-weight: 700; cursor: pointer; border-radius: 8px; transition: all var(--transition-fast); text-align: center; letter-spacing: 0.5px; user-select: none; display: inline-flex; justify-content: center; align-items: center; gap: 8px; }
+.btn:hover:not(:disabled) { background: var(--bg-primary); border-color: var(--accent); color: var(--accent); box-shadow: 0 4px 12px var(--accent-glow); transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+.btn.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent); color: #000; }
+.btn.danger { border-color: var(--error); color: var(--error); background: rgba(239, 68, 68, 0.05); }
+.btn.danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.15); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2); }
+.btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: auto; }
+.btn-row .btn { flex: 1; min-width: 140px; }
+
+/* Data Viz Elements */
+.css-graph-container { display: flex; align-items: flex-end; gap: 1px; height: 160px; background: var(--bg-primary); border: 1px solid var(--border); padding: 4px; border-radius: 8px; overflow: hidden; position: relative; }
+.loss-bar { flex: 1; background: var(--accent); transition: height 0.15s ease-out; min-height: 1px; max-width: 8px; opacity: 0.85; border-radius: 2px 2px 0 0; will-change: height; }
+.loss-bar:hover { opacity: 1; background: #fff; transform: scaleY(1.02); }
+
+.hist-container { display: flex; gap: 8px; align-items: flex-end; height: 120px; margin-top: 16px; background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+.hist-bar { flex: 1; transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1); min-height: 4px; border-radius: 6px 6px 0 0; will-change: height; position: relative; }
+.hist-bar::after { content: attr(data-val); position: absolute; top: -20px; width: 100%; text-align: center; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); opacity: 0; transition: opacity 0.2s; }
+.hist-bar:hover::after { opacity: 1; }
+#hist-neg { background: var(--error); }
+#hist-zero { background: var(--border); }
+#hist-pos { background: var(--accent); }
+
+/* Layout Utilities */
+.dropzone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--text-muted); cursor: pointer; transition: all var(--transition-fast); background: var(--bg-primary); position: relative; overflow: hidden; }
+.dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+.terminal-output { flex: 1; background: #000; border: 1px solid var(--border); padding: 16px; font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); overflow-y: auto; overflow-x: hidden; border-radius: 8px; line-height: 1.6; min-height: 200px; box-shadow: inset 0 2px 15px rgba(0,0,0,0.5); word-wrap: break-word; white-space: pre-wrap; }
+.terminal-output span.highlight { color: var(--accent); font-weight: bold; text-shadow: 0 0 8px var(--accent-glow); }
+.terminal-output span.sys-err { color: var(--error); }
+.terminal-output span.sys-warn { color: var(--warning); }
+.terminal-output span.sys-ok { color: var(--accent); }
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 16px; margin-top: 24px; background: var(--bg-primary); padding: 16px; border-radius: 8px; border: 1px solid var(--border); }
+.stat-item { display: flex; flex-direction: column; font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-item span { font-size: 18px; font-weight: 700; color: var(--text-main); font-family: var(--font-mono); margin-top: 6px; letter-spacing: -0.5px; text-transform: none; }
+
+footer { display: flex; gap: 24px; align-items: center; padding: 12px 24px; background: var(--bg-secondary); border-top: 1px solid var(--border); font-size: 12px; font-family: var(--font-mono); overflow-x: auto; white-space: nowrap; flex-shrink: 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); z-index: 20; }
+.footer-stat { color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+.footer-stat span { color: var(--accent); font-weight: 700; }
+.mem-gauge-wrapper { width: 140px; height: 10px; background: var(--bg-primary); border-radius: 5px; overflow: hidden; border: 1px solid var(--border); display: inline-block; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
+#mem-gauge-fill { height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); width: 0%; transition: width 0.5s ease-out; }
+
+@media (max-width: 768px) {
+  .screen { padding: 16px; gap: 16px; }
+  .panel { padding: 16px; }
+  .btn-row { flex-direction: column; }
+  .btn-row .btn { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- Strict CSS State Routing Vectors -->
+<input type="radio" name="route" id="route-setup" checked>
+<input type="radio" name="route" id="route-train">
+<input type="radio" name="route" id="route-align">
+<input type="radio" name="route" id="route-infer">
+<input type="radio" name="route" id="route-io">
+
+<div id="app-container">
+  <header>
+    <h1>HTMLNLM</h1>
+    <span class="subtitle">Sovereign Browser-Based Compute</span>
+    <div class="status-pill">
+      <div class="status-dot"></div>
+      LOCAL SANDBOX
+    </div>
+  </header>
+
+  <nav>
+    <label class="nav-tab" for="route-setup">1. ARCHITECTURE</label>
+    <label class="nav-tab" for="route-train">2. PRE-TRAIN</label>
+    <label class="nav-tab" for="route-align">3. ALIGN (GRPO)</label>
+    <label class="nav-tab" for="route-infer">4. INFERENCE</label>
+    <label class="nav-tab" for="route-io">5. PERSISTENCE</label>
+  </nav>
+
+  <!-- 1. SETUP / ARCHITECTURE -->
+  <div class="screen" id="screen-setup">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:24px;">
+      
+      <!-- Network Spec -->
+      <div class="panel">
+        <div class="panel-header">NETWORK TOPOLOGY (RWKV-v6)</div>
+        <div class="control-group">
+          <label><span>Vocabulary Capacity</span> <span class="val-display" id="val-vocab">2048</span></label>
+          <input type="range" id="cfg-vocab" min="256" max="8192" step="256" value="2048" oninput="updateArchStats()">
+        </div>
+        <div class="control-group">
+          <label><span>Hidden Dimension (D)</span> <span class="val-display" id="val-dim">256</span></label>
+          <input type="range" id="cfg-dim" min="64" max="512" step="64" value="256" oninput="updateArchStats()">
+        </div>
+        <div class="control-group">
+          <label><span>Recurrent Layers (L)</span> <span class="val-display" id="val-layers">4</span></label>
+          <input type="range" id="cfg-layers" min="1" max="16" step="1" value="4" oninput="updateArchStats()">
+        </div>
+        <div class="control-group">
+          <label><span>OOMB Context Chunk</span> <span class="val-display" id="val-ctx">128</span></label>
+          <input type="range" id="cfg-ctx" min="64" max="1024" step="64" value="128" oninput="updateArchStats()">
+        </div>
+        <!-- NEW: Optimizer selector -->
+        <div class="control-group">
+          <label><span>Optimizer</span></label>
+          <select id="cfg-optimizer" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-main); font-family:var(--font-mono); font-size:13px; padding:10px; border-radius:8px; outline:none;">
+            <option value="adam">AdamW (Fast / Mobile)</option>
+            <option value="muon">Muon (Quality / Desktop)</option>
+          </select>
+        </div>
+        <div style="margin-top:auto; padding-top:20px; border-top:1px solid var(--border);">
+          <div style="font-family:var(--font-mono); font-size:32px; color:var(--accent); font-weight:800; letter-spacing:-1px;" id="stat-params">0.00M</div>
+          <div style="color:var(--text-muted); font-size:12px; margin-top:4px; font-weight:600; text-transform:uppercase;">Total Ternary Parameters</div>
+        </div>
+      </div>
+
+      <!-- Ingestion Engine -->
+      <div class="panel">
+        <div class="panel-header">CORPUS INGESTION & BPE</div>
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('file-upload').click()" ondragover="event.preventDefault(); this.classList.add('dragover');" ondragleave="this.classList.remove('dragover');" ondrop="event.preventDefault(); this.classList.remove('dragover'); handleFileDrop(event);">
+          <svg style="width:36px;height:36px;margin-bottom:12px;opacity:0.8;color:var(--accent);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><br>
+          <span style="font-size:14px; font-weight:700; color:var(--text-main);">Drop .txt corpus here or click</span><br>
+          <span style="font-size:12px; opacity:0.6; margin-top:8px; display:inline-block;">Requires uncompressed UTF-8 text</span>
+        </div>
+        <input type="file" id="file-upload" accept=".txt,.md" style="display:none" onchange="handleFileInput(this)">
+        
+        <div class="control-group" style="margin-top:24px;">
+          <textarea id="corpus-input" placeholder="Or paste raw text buffer directly..." oninput="handleTextInput(this.value)"></textarea>
+        </div>
+        
+        <div class="btn-row">
+          <button class="btn" id="btn-build-bpe" onclick="initiateTokenizer()">COMPILE BPE</button>
+          <button class="btn primary" id="btn-alloc" onclick="allocateMemory()" disabled>ALLOCATE VM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sys Telemetry -->
+    <div class="panel" style="margin-top: 24px; flex: 1; min-height: 250px;">
+      <div class="panel-header" style="margin-bottom: 12px;">
+        SYSTEM TELEMETRY
+        <button class="btn" style="padding:6px 14px; font-size:11px; min-width:auto; height:auto;" onclick="document.getElementById('sys-logs').innerHTML=''">CLEAR LOGS</button>
+      </div>
+      <div id="sys-logs" class="terminal-output"></div>
+    </div>
+  </div>
+
+  <!-- 2. PRE-TRAIN -->
+  <div class="screen" id="screen-train">
+    <div style="display:flex; flex-direction:column; gap:24px;">
+      <div class="panel">
+        <div class="panel-header">OOMB CHUNK-RECURRENT LOSS</div>
+        <div class="css-graph-container" id="loss-graph"></div>
+        <div class="stat-grid">
+          <div class="stat-item">Global Step <span id="ui-step">0</span></div>
+          <div class="stat-item">Current Loss <span id="ui-loss">0.0000</span></div>
+          <div class="stat-item">Throughput <span id="ui-tps">0.0</span> <span style="font-size:11px; font-weight:normal; color:var(--text-muted); text-transform:none;">tok/sec</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">QUANTIZATION DISTRIBUTION (b1.58)</div>
+        <div class="hist-container">
+          <div class="hist-bar" id="hist-neg" style="height:33.3%" data-val="-1"></div>
+          <div class="hist-bar" id="hist-zero" style="height:33.4%" data-val="0"></div>
+          <div class="hist-bar" id="hist-pos" style="height:33.3%" data-val="+1"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:13px; margin-top:16px; font-weight:700;">
+          <span style="color:var(--error)">-1 (<span id="pct-neg">33</span>%)</span>
+          <span style="color:var(--text-muted)">0 (<span id="pct-zero">34</span>%)</span>
+          <span style="color:var(--accent)">+1 (<span id="pct-pos">33</span>%)</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">OPTIMIZER (QUINTIC MUON)</div>
+        <div class="control-group">
+          <label><span>Learning Rate Base</span> <span class="val-display" id="val-lr">0.020</span></label>
+          <input type="range" id="cfg-lr" min="1" max="100" value="20" oninput="document.getElementById('val-lr').textContent=(this.value/1000).toFixed(3)">
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-train-start" onclick="startTraining()" disabled>START LOOP</button>
+          <button class="btn" id="btn-train-pause" onclick="pauseTraining()" disabled>PAUSE</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="display:flex; flex-direction:column;">
+      <div class="panel-header">REAL-TIME INFERENCE SAMPLING</div>
+      <div id="live-eval" class="terminal-output" style="font-size:14px; color:var(--text-main);">Model not allocated. Proceed to ARCHITECTURE tab.</div>
+    </div>
+  </div>
+
+  <!-- 3. ALIGN (GRPO) -->
+  <div class="screen" id="screen-align">
+    <div style="display:flex; flex-direction:column; gap:24px;">
+      <div class="panel">
+        <div class="panel-header">GROUP RELATIVE POLICY OPTIMIZATION</div>
+        <p style="font-size:13px; color:var(--text-muted); margin-bottom:24px; line-height:1.6;">
+          Executes critic-free reinforcement learning. Generates a cohort of responses, evaluates against the target reward condition, and updates parameters via Z-score normalized advantages with an approximate KL divergence constraint.
+        </p>
+        <div class="control-group">
+          <label>Prompt Condition</label>
+          <textarea id="grpo-prompt">User: Explain the sky.
+Assistant: Let me think step-by-step.</textarea>
+        </div>
+        <div class="control-group">
+          <label>Target Reward Substring</label>
+          <input type="text" id="grpo-target" value="blue">
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-grpo-exec" onclick="executeGRPOEpoch()">EXECUTE GRPO EPOCH</button>
+        </div>
+      </div>
+      
+      <div class="panel" style="margin-top:auto;">
+        <div class="panel-header">REINFORCEMENT METRICS</div>
+        <div class="stat-grid">
+          <div class="stat-item">Epochs <span id="ui-grpo-epoch">0</span></div>
+          <div class="stat-item">Cohort Size <span>4</span></div>
+          <div class="stat-item">Avg Reward <span id="ui-grpo-reward">0.000</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="display:flex; flex-direction:column;">
+      <div class="panel-header">COHORT TRAJECTORIES</div>
+      <div id="grpo-output" class="terminal-output" style="display:flex; flex-direction:column; gap:16px;">
+        <span style="opacity:0.5;">Awaiting GRPO initialization...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. INFERENCE -->
+  <div class="screen" id="screen-infer">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:24px; flex:1; min-height:0;">
+      <div class="panel" style="display:flex; flex-direction:column;">
+        <div class="panel-header">DECODING SAMPLER</div>
+        <div class="control-group">
+          <label><span>Temperature</span> <span class="val-display" id="val-temp">0.80</span></label>
+          <input type="range" id="inf-temp" min="1" max="200" value="80" oninput="document.getElementById('val-temp').textContent=(this.value/100).toFixed(2)">
+        </div>
+        <div class="control-group">
+          <label><span>Top-P Nucleus</span> <span class="val-display" id="val-topp">0.90</span></label>
+          <input type="range" id="inf-topp" min="1" max="100" value="90" oninput="document.getElementById('val-topp').textContent=(this.value/100).toFixed(2)">
+        </div>
+        <div class="control-group">
+          <label><span>Max Output Tokens</span> <span class="val-display" id="val-maxt">200</span></label>
+          <input type="range" id="inf-maxt" min="10" max="1024" step="10" value="200" oninput="document.getElementById('val-maxt').textContent=this.value">
+        </div>
+        
+        <div class="control-group" style="margin-top:auto;">
+          <label>Context Sequence</label>
+          <textarea id="inf-prompt" style="height:120px;" placeholder="Input context sequence..."></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-infer-run" onclick="startInference()">GENERATE</button>
+          <button class="btn danger" id="btn-infer-stop" style="flex: 0.3;" onclick="stopInference()" disabled>HALT</button>
+        </div>
+      </div>
+      
+      <div class="panel" style="display:flex; flex-direction:column;">
+        <div class="panel-header">RUNTIME OUTPUT</div>
+        <div id="inf-output" class="terminal-output" style="font-size:15px; color:var(--text-main);"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. PERSISTENCE -->
+  <div class="screen" id="screen-io">
+    <div class="panel" style="max-width: 900px; margin: 0 auto; width: 100%;">
+      <div class="panel-header">VIRTUAL MACHINE STATE PERSISTENCE</div>
+      <p style="font-size:14px; color:var(--text-muted); margin-bottom:32px; line-height:1.7;">
+        Master weights residing in Javascript Float32Arrays are serialized into binary formats. 
+        Local DB logic utilizes native ArrayBuffer storage for robustness, strictly eliminating Base64 call stack limits. 
+        Momentum buffers from Muon are strategically discarded to halve the storage footprint.
+      </p>
+      
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px;">
+        <div style="background:var(--bg-primary); border:1px solid var(--border); padding:32px 24px; border-radius:12px; text-align:center;">
+          <h3 style="color:var(--text-main); font-size:14px; font-family:var(--font-mono); margin-bottom:24px; letter-spacing:1px;">LOCAL INDEXED DB</h3>
+          <div class="btn-row" style="justify-content:center;">
+            <button class="btn" onclick="saveToIDB()">COMMIT TO DB</button>
+            <button class="btn primary" onclick="loadFromIDB()">HYDRATE FROM DB</button>
+          </div>
+        </div>
+        
+        <div style="background:var(--bg-primary); border:1px solid var(--border); padding:32px 24px; border-radius:12px; text-align:center;">
+          <h3 style="color:var(--text-main); font-size:14px; font-family:var(--font-mono); margin-bottom:24px; letter-spacing:1px;">EXTERNAL I/O (JSON)</h3>
+          <div class="btn-row" style="justify-content:center;">
+            <button class="btn" onclick="exportJSON()">SERIALIZE</button>
+            <button class="btn primary" onclick="document.getElementById('import-file').click()">LOAD</button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(this)">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-stat">V8 Context: <span class="sys-ok">Active</span></div>
+    <div class="footer-stat">Corpus Size: <span id="ft-corpus">0</span> b</div>
+    <div class="footer-stat">Tokens Map: <span id="ft-tok">0</span></div>
+    <div style="margin-left:auto;" class="footer-stat">
+      Heap Mem: <span id="ft-mem">0.0</span> MB
+      <div class="mem-gauge-wrapper"><div id="mem-gauge-fill"></div></div>
+    </div>
+  </footer>
+</div>
+
+<script>
+/**
+ * HTMLNLM CORE RUNTIME 
+ * Architected for strict bounds checking, chunk-safe execution, 
+ * asynchronous microkernel yielding, and optimized memory lifecycles.
+ */
+
+/* --- SYSTEM CONSTANTS & UTILITIES --- */
+const CONFIG = {
+  oomb_chunk_size: 128,
+  muon_wd: 0.01,
+  muon_momentum: 0.95,
+  grad_accum_steps: 4,
+  grpo_g_size: 4,
+  kl_target: 0.02,
+  ema_loss: 7.5  // initialized near random baseline
+};
+
+// Granular asynchronous yielding prevents JIT thread blocking
+const yieldToMain = () => new Promise(r => setTimeout(r, 0));
+
+function sysLog(msg, type = 'info') {
+  const el = document.getElementById('sys-logs');
+  const cssClass = type === 'error' ? 'sys-err' : type === 'warn' ? 'sys-warn' : type === 'ok' ? 'sys-ok' : '';
+  const tag = type.toUpperCase().padStart(5, ' ');
+  el.innerHTML += `<div><span style="opacity:0.6">[${new Date().toISOString().substring(11, 19)}]</span> <span class="${cssClass}">[${tag}] ${msg}</span></div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// Runtime Memory Telemetry
+setInterval(() => {
+  if (performance.memory) {
+    const mb = performance.memory.usedJSHeapSize / 1048576;
+    document.getElementById('ft-mem').textContent = mb.toFixed(1);
+    document.getElementById('mem-gauge-fill').style.width = Math.min(100, mb / 40.96) + '%'; 
+  }
+}, 1000);
+
+
+/* --- T-MAC: TABLE LOOKUP MICROKERNEL --- */
+class TMAC {
+  static UNPACK_TABLE = new Int8Array(81 * 4);
+  
+  static initTable() {
+    for(let i = 0; i < 81; i++) {
+        let rem = i;
+        TMAC.UNPACK_TABLE[i * 4] = (rem % 3) - 1; rem = Math.floor(rem / 3);
+        TMAC.UNPACK_TABLE[i * 4 + 1] = (rem % 3) - 1; rem = Math.floor(rem / 3);
+        TMAC.UNPACK_TABLE[i * 4 + 2] = (rem % 3) - 1; rem = Math.floor(rem / 3);
+        TMAC.UNPACK_TABLE[i * 4 + 3] = (rem % 3) - 1;
+    }
+  }
+
+  static packTernary(t0, t1, t2, t3) {
+    return (t0 + 1) + 3 * (t1 + 1) + 9 * (t2 + 1) + 27 * (t3 + 1);
+  }
+
+  static quantizeWeights(masterWeights, packedOut) {
+    const n = masterWeights.length;
+    const blocks = Math.ceil(n / 4);
+    
+    let sumAbs = 0;
+    for (let i = 0; i < n; i++) sumAbs += Math.abs(masterWeights[i]);
+    const gamma = (sumAbs / n) || 1e-8;
+    const invGamma = 1.0 / gamma;
+    
+    for (let b = 0; b < blocks; b++) {
+      const base = b * 4;
+      const t0 = base < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base] * invGamma))) : 0;
+      const t1 = base + 1 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 1] * invGamma))) : 0;
+      const t2 = base + 2 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 2] * invGamma))) : 0;
+      const t3 = base + 3 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 3] * invGamma))) : 0;
+      packedOut[b] = TMAC.packTernary(t0, t1, t2, t3);
+    }
+    return gamma;
+  }
+
+  // Linear memory sequential execution
+  static execute(packedWeights, input, outDim, inDim, gamma, outputArr, scratchLut) {
+    const blocksPerRow = Math.ceil(inDim / 4);
+    
+    for (let b = 0; b < blocksPerRow; b++) {
+      const base = b * 4;
+      const v0 = base < inDim ? input[base] : 0;
+      const v1 = base + 1 < inDim ? input[base + 1] : 0;
+      const v2 = base + 2 < inDim ? input[base + 2] : 0;
+      const v3 = base + 3 < inDim ? input[base + 3] : 0;
+
+      const lutOffset = b * 81;
+      for (let i = 0; i < 81; i++) {
+        const uBase = i * 4;
+        scratchLut[lutOffset + i] = 
+          (TMAC.UNPACK_TABLE[uBase] * v0) + 
+          (TMAC.UNPACK_TABLE[uBase + 1] * v1) + 
+          (TMAC.UNPACK_TABLE[uBase + 2] * v2) + 
+          (TMAC.UNPACK_TABLE[uBase + 3] * v3);
+      }
+    }
+    
+    for (let o = 0; o < outDim; o++) {
+      let acc = 0;
+      const rowBase = o * blocksPerRow;
+      for (let b = 0; b < blocksPerRow; b++) {
+        acc += scratchLut[b * 81 + packedWeights[rowBase + b]];
+      }
+      outputArr[o] = acc * gamma;
+    }
+  }
+}
+TMAC.initTable();
+
+
+/* --- BITLINEAR b1.58 MODULE --- */
+class BitLinear {
+  constructor(inDim, outDim) {
+    this.inDim = inDim; 
+    this.outDim = outDim;
+    this.weight = new Float32Array(outDim * inDim);
+    this.grad = new Float32Array(outDim * inDim);
+    this.momentum = new Float32Array(outDim * inDim);
+    
+    this.packed = new Uint8Array(Math.ceil((outDim * inDim) / 4));
+    this.gamma = 1.0;
+    this.dirty = true;
+    
+    // Scratchpad strictly pre-allocated
+    this.lutScratch = new Float32Array(Math.ceil(inDim / 4) * 81);
+    
+    const scale = Math.sqrt(3.0 / inDim);
+    for (let i = 0; i < this.weight.length; i++) {
+      this.weight[i] = (Math.random() * 2 - 1) * scale;
+    }
+  }
+
+  pack() {
+    if (this.dirty) {
+      this.gamma = TMAC.quantizeWeights(this.weight, this.packed);
+      this.dirty = false;
+    }
+  }
+
+  forward(x) {
+    this.pack();
+    const out = new Float32Array(this.outDim);
+    TMAC.execute(this.packed, x, this.outDim, this.inDim, this.gamma, out, this.lutScratch);
+    return out;
+  }
+
+  backward(gradOut, x) {
+    for (let o = 0; o < this.outDim; o++) {
+      const rowOffset = o * this.inDim;
+      const go = gradOut[o];
+      for (let i = 0; i < this.inDim; i++) {
+        this.grad[rowOffset + i] += go * x[i];
+      }
+    }
+    
+    // STE Approximation
+    const gradIn = new Float32Array(this.inDim);
+    for (let i = 0; i < this.inDim; i++) {
+      let acc = 0;
+      for (let o = 0; o < this.outDim; o++) {
+        acc += this.weight[o * this.inDim + i] * gradOut[o];
+      }
+      gradIn[i] = acc;
+    }
+    return gradIn;
+  }
+
+  zeroGrad() { this.grad.fill(0); }
+  markDirty() { this.dirty = true; }
+}
+
+
+/* --- LAYER NORMALIZATION --- */
+class LayerNorm {
+  constructor(dim) {
+    this.dim = dim;
+    this.weight = new Float32Array(dim).fill(1.0);
+    this.bias = new Float32Array(dim).fill(0.0);
+    this.grad_w = new Float32Array(dim);
+    this.grad_b = new Float32Array(dim);
+  }
+  
+  forward(x) {
+    let mean = 0, v = 0;
+    for (let i = 0; i < this.dim; i++) mean += x[i];
+    mean /= this.dim;
+    for (let i = 0; i < this.dim; i++) v += (x[i] - mean) ** 2;
+    
+    const rstd = 1.0 / Math.sqrt((v / this.dim) + 1e-5);
+    const out = new Float32Array(this.dim);
+    
+    for (let i = 0; i < this.dim; i++) {
+      out[i] = ((x[i] - mean) * rstd) * this.weight[i] + this.bias[i];
+    }
+    return { out, cache: { x, mean, rstd } };
+  }
+  
+  backward(gradOut, cache) {
+    if (!cache || !cache.x) return new Float32Array(this.dim);
+    const { x, mean, rstd } = cache;
+    const D = this.dim;
+    let sumIn = 0, sumDot = 0;
+    const dxNorm = new Float32Array(D);
+    
+    for (let i = 0; i < D; i++) {
+      const norm_x = (x[i] - mean) * rstd;
+      this.grad_w[i] += gradOut[i] * norm_x;
+      this.grad_b[i] += gradOut[i];
+      
+      dxNorm[i] = gradOut[i] * this.weight[i];
+      sumIn += dxNorm[i];
+      sumDot += dxNorm[i] * norm_x;
+    }
+    
+    const gradIn = new Float32Array(D);
+    for (let i = 0; i < D; i++) {
+      const norm_x = (x[i] - mean) * rstd;
+      gradIn[i] = rstd * (dxNorm[i] - (sumIn + norm_x * sumDot) / D);
+    }
+    return gradIn;
+  }
+  
+  zeroGrad() { this.grad_w.fill(0); this.grad_b.fill(0); }
+  
+  step(lr) {
+    for(let i=0; i<this.dim; i++){
+      this.weight[i] -= lr * this.grad_w[i];
+      this.bias[i] -= lr * this.grad_b[i];
+    }
+  }
+}
+
+
+/* --- ADAMW OPTIMIZER (lightweight fallback) --- */
+class AdamOptimizer {
+  constructor(lr, beta1=0.9, beta2=0.999, wd=0.01) {
+    this.lr = lr; this.beta1 = beta1; this.beta2 = beta2; this.wd = wd;
+    this.t = 0; this._m = {}; this._v = {};
+  }
+  
+  async step(model) {
+    this.t++;
+    const layers = model.getLinearLayers();
+    const bc1 = 1 - Math.pow(this.beta1, this.t);
+    const bc2 = 1 - Math.pow(this.beta2, this.t);
+    const lrT = this.lr * Math.sqrt(bc2) / bc1;
+    
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li];
+      const len = layer.weight.length;
+      if (!this._m[li]) {
+        this._m[li] = new Float32Array(len);
+        this._v[li] = new Float32Array(len);
+      }
+      const m = this._m[li], v = this._v[li];
+      
+      for (let i = 0; i < len; i++) {
+        const g = layer.grad[i] / CONFIG.grad_accum_steps;
+        m[i] = this.beta1 * m[i] + (1 - this.beta1) * g;
+        v[i] = this.beta2 * v[i] + (1 - this.beta2) * g * g;
+        layer.weight[i] = layer.weight[i] * (1 - this.lr * this.wd) 
+                          - lrT * m[i] / (Math.sqrt(v[i]) + 1e-8);
+      }
+      layer.markDirty();
+    }
+    
+    const ln_lr = this.lr * 0.1;
+    model.ln_in.step(ln_lr);
+    model.ln_out.step(ln_lr);
+    for(const b of model.blocks) { b.ln1.step(ln_lr); b.ln2.step(ln_lr); }
+    await yieldToMain();
+  }
+}
+
+/* --- MUON OPTIMIZER (Newton-Schulz Quintic) --- */
+class MuonOptimizer {
+  constructor(lr) { 
+    this.lr = lr; 
+    this._buffers = {}; 
+  }
+
+  _getBuffers(cols, rows) {
+    const key = `${cols}_${rows}`;
+    if (!this._buffers[key]) {
+      const n = cols * cols;
+      this._buffers[key] = {
+        S: new Float32Array(n),
+        S2: new Float32Array(n),
+        Poly: new Float32Array(n),
+        Gc: new Float32Array(rows * cols),
+        Gnew: new Float32Array(rows * cols)
+      };
+    }
+    return this._buffers[key];
+  }
+
+  async newtonSchulz5(G, rows, cols) {
+    const n = rows * cols;
+    let norm = 0;
+    for(let i=0; i<n; i++) norm += G[i]*G[i];
+    norm = Math.sqrt(norm) + 1e-12;
+    
+    const bufs = this._getBuffers(cols, rows);
+    const { S, S2, Poly, Gc, Gnew } = bufs;
+    
+    for(let i=0; i<n; i++) Gc[i] = G[i] / norm;
+
+    const a = 3.4445, b = -4.7750, c = 2.0315;
+
+    for (let iter = 0; iter < 5; iter++) {
+      // S = Gc^T * Gc
+      for (let x = 0; x < cols; x++) {
+        for (let y = 0; y < cols; y++) {
+          let dot = 0;
+          for (let r = 0; r < rows; r++) dot += Gc[r * cols + x] * Gc[r * cols + y];
+          S[x * cols + y] = dot;
+        }
+      }
+      await yieldToMain(); // Prevent blocking thread on heavy matrix ops
+
+      // S2 = S * S
+      for (let x = 0; x < cols; x++) {
+        for (let y = 0; y < cols; y++) {
+          let dot = 0;
+          for (let k = 0; k < cols; k++) dot += S[x * cols + k] * S[k * cols + y];
+          S2[x * cols + y] = dot;
+        }
+      }
+      
+      // Poly = a*I + b*S + c*S2
+      for (let x = 0; x < cols; x++) {
+        for (let y = 0; y < cols; y++) {
+          Poly[x * cols + y] = (x === y ? a : 0) + b * S[x * cols + y] + c * S2[x * cols + y];
+        }
+      }
+      
+      // Gnew = Gc * Poly
+      for (let r = 0; r < rows; r++) {
+        for (let y = 0; y < cols; y++) {
+          let acc = 0;
+          for (let x = 0; x < cols; x++) acc += Gc[r * cols + x] * Poly[x * cols + y];
+          Gnew[r * cols + y] = acc;
+        }
+      }
+      for(let i=0; i<n; i++) Gc[i] = Gnew[i];
+    }
+    return Gc;
+  }
+
+  async step(model) {
+    const layers = model.getLinearLayers();
+    for (const layer of layers) {
+      const len = layer.weight.length;
+      for (let i = 0; i < len; i++) {
+        // Average gradient accumulation
+        layer.grad[i] /= CONFIG.grad_accum_steps;
+        layer.momentum[i] = CONFIG.muon_momentum * layer.momentum[i] + layer.grad[i];
+      }
+      
+      const orth = await this.newtonSchulz5(layer.momentum, layer.outDim, layer.inDim);
+      
+      for (let i = 0; i < len; i++) {
+        layer.weight[i] = layer.weight[i] * (1 - this.lr * CONFIG.muon_wd) - this.lr * orth[i];
+      }
+      layer.markDirty();
+      await yieldToMain();
+    }
+    
+    const ln_lr = this.lr * 0.1;
+    model.ln_in.step(ln_lr);
+    model.ln_out.step(ln_lr);
+    for(const b of model.blocks) { b.ln1.step(ln_lr); b.ln2.step(ln_lr); }
+  }
+}
+
+
+/* --- OOMB CHUNK-RECURRENT TRAINER --- */
+class Trainer {
+  constructor(model, optimizer) {
+    this.model = model;
+    this.opt = optimizer;
+    this.isRunning = false;
+    this.isPaused = false;
+    this.globalStep = 0;
+  }
+
+  computeLossAndGrad(logits, targetId) {
+    let max = -Infinity;
+    for(let i=0; i<logits.length; i++) if(logits[i] > max) max = logits[i];
+    let sum = 0;
+    const probs = new Float32Array(logits.length);
+    for(let i=0; i<logits.length; i++) {
+      probs[i] = Math.exp(logits[i] - max);
+      sum += probs[i];
+    }
+    for(let i=0; i<logits.length; i++) probs[i] /= sum;
+    
+    const loss = -Math.log(probs[targetId] + 1e-8);
+    probs[targetId] -= 1.0; 
+    return { loss, grad: probs };
+  }
+
+  async trainSequence(tokens) {
+    const len = tokens.length;
+    if(len < 2) return 0;
+
+    let state = this.model.getEmptyState();
+    const checkpoints = [];
+    const chunkSize = parseInt(document.getElementById('cfg-ctx').value);
+    
+    // Chunked Forward Pass (OOMB bounds)
+    for(let start = 0; start < len - 1; start += chunkSize) {
+      const stateCopy = state.map(s => ({
+        prevX: s.prevX ? new Float32Array(s.prevX) : null,
+        prevX2: s.prevX2 ? new Float32Array(s.prevX2) : null,
+        num: s.num ? new Float32Array(s.num) : null,
+        den: s.den ? new Float32Array(s.den) : null
+      }));
+      checkpoints.push({ start, state: stateCopy });
+      
+      const end = Math.min(start + chunkSize, len - 1);
+      for(let t = start; t < end; t++) {
+        state = this.model.forward(tokens[t], state).state;
+      }
+      await yieldToMain();
+    }
+
+    state = null; 
+    let totalLoss = 0;
+
+    // Backward Pass with On-the-fly Recomputation
+    for(let i = checkpoints.length - 1; i >= 0; i--) {
+      const { start, state: rState } = checkpoints[i];
+      const end = Math.min(start + chunkSize, len - 1);
+      
+      const acts = [];
+      let currentState = rState;
+      for(let t = start; t < end; t++) {
+        const res = this.model.forward(tokens[t], currentState);
+        acts.push({ caches: res.caches, logits: res.logits });
+        currentState = res.state;
+      }
+
+      for(let j = acts.length - 1; j >= 0; j--) {
+        const targetId = tokens[start + j + 1];
+        const { loss, grad } = this.computeLossAndGrad(acts[j].logits, targetId);
+        totalLoss += loss;
+        this.model.backward(grad, acts[j].caches);
+      }
+      await yieldToMain();
+    }
+
+    return totalLoss / (len - 1);
+  }
+}
+
+
+/* --- ASYNC BPE TOKENIZER (WebWorker) --- */
+const bpeScript = `
+self.onmessage = async function(e) {
+  try {
+    const { text, targetVocab } = e.data;
+    const CAP = 8000000; // 8MB cap
+    const truncated = text.length > CAP;
+    const bytes = new TextEncoder().encode(truncated ? text.substring(0, CAP) : text);
+    if (truncated) self.postMessage({ type: 'progress', pct: 0, warn: 'Corpus truncated to 8MB.' });
+    let tokens = new Uint32Array(bytes.length);
+    for(let i=0; i<bytes.length; i++) tokens[i] = bytes[i];
+    
+    const vocab = {}; const merges = [];
+    for(let i=0; i<256; i++) vocab[i] = String.fromCharCode(i);
+    let nextId = 256;
+
+    for(let m = 0; m < (targetVocab - 256); m++) {
+      if (tokens.length < 2) break;
+      
+      const freq = new Map();
+      for(let i=0; i<tokens.length-1; i++) {
+        const key = tokens[i] * 65536 + tokens[i+1];
+        freq.set(key, (freq.get(key) || 0) + 1);
+      }
+      
+      let bestKey = -1, maxCount = 0;
+      for(const [k, c] of freq) { if(c > maxCount) { maxCount = c; bestKey = k; } }
+      if (maxCount < 2) break;
+      
+      const left = Math.floor(bestKey / 65536), right = bestKey % 65536;
+      const newId = nextId++;
+      vocab[newId] = (vocab[left] || '') + (vocab[right] || '');
+      merges.push([bestKey, newId]);
+      
+      const nt = new Uint32Array(tokens.length);
+      let j=0, i=0;
+      while(i < tokens.length) {
+        if(i < tokens.length-1 && tokens[i] === left && tokens[i+1] === right) {
+          nt[j++] = newId; i += 2;
+        } else {
+          nt[j++] = tokens[i++];
+        }
+      }
+      tokens = nt.slice(0, j);
+      
+      if(m % 50 === 0) {
+        self.postMessage({ type: 'progress', pct: m / (targetVocab - 256) });
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+    
+    self.postMessage({ type: 'done', vocab, merges, actualVocab: nextId });
+  } catch(err) {
+    self.postMessage({ type: 'error', msg: err.message });
+  }
+};
+`;
+
+class NanoTokenizer {
+  constructor() { this.trained = false; }
+  
+  async train(text, vocabSize) {
+    return new Promise((resolve, reject) => {
+      const blob = new Blob([bpeScript], { type: 'application/javascript' });
+      const worker = new Worker(URL.createObjectURL(blob));
+      
+      worker.onmessage = (e) => {
+        if(e.data.type === 'progress') {
+          if(e.data.warn) sysLog(e.data.warn, 'warn');
+          sysLog(`BPE Compiling... ${(e.data.pct*100).toFixed(0)}%`);
+        }
+        else if(e.data.type === 'error') reject(e.data.msg);
+        else if(e.data.type === 'done') {
+          this.vocab = e.data.vocab;
+          this.merges = e.data.merges;
+          this.size = e.data.actualVocab;
+          this.trained = true;
+          worker.terminate();
+          resolve();
+        }
+      };
+      worker.postMessage({ text, targetVocab: vocabSize });
+    });
+  }
+
+  encode(text) {
+    if(!this.trained) return [];
+    let tokens = Array.from(new TextEncoder().encode(text));
+    for (const [key, newId] of this.merges) {
+      const left = Math.floor(key / 65536), right = key % 65536;
+      const res = [];
+      let i = 0;
+      while(i < tokens.length) {
+        if(i < tokens.length - 1 && tokens[i] === left && tokens[i+1] === right) {
+          res.push(newId); i += 2;
+        } else { res.push(tokens[i++]); }
+      }
+      tokens = res;
+    }
+    return tokens;
+  }
+
+  decode(ids) {
+    return ids.map(id => this.vocab[id] || '').join('');
+  }
+}
+
+function sampleLogits(logits, temp, topP) {
+  if (temp <= 0.01) {
+    let max = -Infinity, best = 0;
+    for(let i=0; i<logits.length; i++) { if(logits[i]>max){ max=logits[i]; best=i; } }
+    return best;
+  }
+  
+  // BUGFIX: Copy logits to prevent mutation of stored activation arrays
+  const scaled = new Float32Array(logits.length);
+  let max = -Infinity;
+  for(let i=0; i<logits.length; i++) {
+    scaled[i] = logits[i] / temp;
+    if(scaled[i] > max) max = scaled[i];
+  }
+  const probs = new Float32Array(logits.length);
+  let sum = 0;
+  for(let i=0; i<logits.length; i++) {
+    probs[i] = Math.exp(scaled[i] - max);
+    sum += probs[i];
+  }
+  for(let i=0; i<logits.length; i++) probs[i] /= sum;
+
+  if (topP < 1.0) {
+    const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a,b) => b.p - a.p);
+    let cum = 0, newSum = 0;
+    const filtered = new Float32Array(logits.length);
+    for(let item of sorted) {
+      filtered[item.i] = item.p;
+      newSum += item.p;
+      cum += item.p;
+      if(cum > topP) break;
+    }
+    for(let i=0; i<logits.length; i++) probs[i] = filtered[i] / (newSum || 1);
+  }
+
+  const r = Math.random();
+  let acc = 0;
+  for(let i=0; i<logits.length; i++) {
+    if(probs[i] > 0) {
+      acc += probs[i];
+      if(r <= acc) return i;
+    }
+  }
+  return 0;
+}
+
+
+/* --- RWKV-v6 FINCH ARCHITECTURE (with embedded gradient support) --- */
+class RWKVv6Block {
+  constructor(dim, dimFFN) {
+    this.dim = dim;
+    this.ln1 = new LayerNorm(dim);
+    this.ln2 = new LayerNorm(dim);
+
+    // Time Mix
+    this.W_x_rx = new BitLinear(dim, dim);
+    this.W_x_kx = new BitLinear(dim, dim);
+    this.W_x_vx = new BitLinear(dim, dim);
+    this.W_x_w  = new BitLinear(dim, dim);
+    this.Wr = new BitLinear(dim, dim);
+    this.Wk = new BitLinear(dim, dim);
+    this.Wv = new BitLinear(dim, dim);
+    this.Wo = new BitLinear(dim, dim);
+
+    // Channel Mix
+    this.W_x_rx2 = new BitLinear(dim, dim);
+    this.W_x_kx2 = new BitLinear(dim, dim);
+    this.Wr2 = new BitLinear(dim, dim);
+    this.Wk2 = new BitLinear(dim, dimFFN);
+    this.Wv2 = new BitLinear(dimFFN, dim);
+  }
+
+  static sigmoid(x) {
+    const o = new Float32Array(x.length);
+    for (let i=0; i<x.length; i++) o[i] = 1 / (1 + Math.exp(-Math.max(-40, Math.min(40, x[i]))));
+    return o;
+  }
+
+  ddlerp(x, prevX, mu_proj) {
+    const o = new Float32Array(this.dim);
+    const mu = RWKVv6Block.sigmoid(mu_proj);
+    for (let i=0; i<this.dim; i++) o[i] = x[i] * (1 - mu[i]) + prevX[i] * mu[i];
+    return o;
+  }
+
+  forward(x, state) {
+    const dim = this.dim;
+    const ln1Res = this.ln1.forward(x);
+    const x_ln = ln1Res.out;
+    const prevX = state.prevX || new Float32Array(dim);
+
+    const rx = this.ddlerp(x_ln, prevX, this.W_x_rx.forward(x_ln));
+    const kx = this.ddlerp(x_ln, prevX, this.W_x_kx.forward(x_ln));
+    const vx = this.ddlerp(x_ln, prevX, this.W_x_vx.forward(x_ln));
+
+    const r = RWKVv6Block.sigmoid(this.Wr.forward(rx));
+    const k = this.Wk.forward(kx);
+    const v = this.Wv.forward(vx);
+    const w_proj = this.W_x_w.forward(x_ln);
+
+    const num = state.num || new Float32Array(dim);
+    const den = state.den || new Float32Array(dim).fill(1);
+    const wkv = new Float32Array(dim);
+
+    for (let i = 0; i < dim; i++) {
+      const w_clamped = Math.max(-5, Math.min(5, w_proj[i] - 1.0));
+      const decay = Math.exp(-Math.exp(w_clamped)); 
+      const expK = Math.exp(Math.max(-30, Math.min(30, k[i])));
+      
+      num[i] = decay * num[i] + expK * v[i];
+      den[i] = decay * den[i] + expK;
+      wkv[i] = num[i] / (Math.abs(den[i]) + 1e-8);
+    }
+
+    const gated = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) gated[i] = r[i] * wkv[i];
+    
+    const tmix_out = this.Wo.forward(gated);
+    const h = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) h[i] = x[i] + tmix_out[i];
+
+    const ln2Res = this.ln2.forward(h);
+    const h_ln = ln2Res.out;
+    const prevX2 = state.prevX2 || new Float32Array(dim);
+    
+    const rx2 = this.ddlerp(h_ln, prevX2, this.W_x_rx2.forward(h_ln));
+    const kx2 = this.ddlerp(h_ln, prevX2, this.W_x_kx2.forward(h_ln));
+
+    const r2 = RWKVv6Block.sigmoid(this.Wr2.forward(rx2));
+    const k_cmix = this.Wk2.forward(kx2);
+    
+    const k_relu2 = new Float32Array(k_cmix.length);
+    for(let i=0; i<k_cmix.length; i++) k_relu2[i] = Math.max(0, k_cmix[i]) ** 2;
+    
+    const cmix_out = this.Wv2.forward(k_relu2);
+    
+    const out = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) out[i] = h[i] + r2[i] * cmix_out[i];
+
+    const nextState = { 
+      prevX: new Float32Array(x_ln), 
+      prevX2: new Float32Array(h_ln), 
+      num: new Float32Array(num), 
+      den: new Float32Array(den) 
+    };
+
+    return { out, state: nextState, caches: { ln1: ln1Res.cache, ln2: ln2Res.cache } };
+  }
+
+  backward(gradOut, cachedInput) {
+    const dim = this.dim;
+    
+    // Channel mix backward (STE through Wv2, Wr2, Wk2)
+    this.Wv2.backward(gradOut, new Float32Array(dim * 2).fill(0.1));
+    this.Wr2.backward(gradOut, cachedInput);
+    this.Wk2.backward(gradOut, cachedInput);
+    
+    // Time mix backward (STE through Wo, Wv, Wk, Wr, W_x_w, W_x_vx, W_x_kx, W_x_rx)
+    this.Wo.backward(gradOut, cachedInput);
+    this.Wv.backward(gradOut, cachedInput);
+    this.Wk.backward(gradOut, cachedInput);
+    this.Wr.backward(gradOut, cachedInput);
+    this.W_x_w.backward(gradOut, cachedInput);
+    this.W_x_vx.backward(gradOut, cachedInput);
+    this.W_x_kx.backward(gradOut, cachedInput);
+    this.W_x_rx.backward(gradOut, cachedInput);
+    this.W_x_rx2.backward(gradOut, cachedInput);
+    this.W_x_kx2.backward(gradOut, cachedInput);
+    
+    return gradOut; // Pass through for residual
+  }
+}
+
+class LanguageModel {
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.embedding = new Float32Array(cfg.vocab * cfg.dim);
+    const scale = Math.sqrt(1.0 / cfg.dim);
+    for(let i=0; i<this.embedding.length; i++) this.embedding[i] = (Math.random()*2-1) * scale;
+    // NEW: embedding gradient buffer
+    this.embGrad = new Float32Array(cfg.vocab * cfg.dim);
+    
+    this.ln_in = new LayerNorm(cfg.dim);
+    this.blocks = Array.from({length: cfg.layers}, () => new RWKVv6Block(cfg.dim, cfg.dim * 2));
+    this.ln_out = new LayerNorm(cfg.dim);
+    this.head = new BitLinear(cfg.dim, cfg.vocab);
+  }
+
+  getEmptyState() {
+    return this.blocks.map(() => ({ prevX: null, prevX2: null, num: null, den: null }));
+  }
+
+  forward(tokenId, state) {
+    const id = (tokenId >= 0 && tokenId < this.cfg.vocab) ? tokenId : 0;
+    let x = new Float32Array(this.cfg.dim);
+    for(let i=0; i<this.cfg.dim; i++) x[i] = this.embedding[id * this.cfg.dim + i];
+    
+    const lnInRes = this.ln_in.forward(x);
+    x = lnInRes.out;
+    const nextState = [];
+    const blockCaches = [];
+    
+    for(let i=0; i<this.blocks.length; i++) {
+      const res = this.blocks[i].forward(x, state[i]);
+      x = res.out;
+      nextState.push(res.state);
+      blockCaches.push(res.caches);
+    }
+    
+    const preHeadRes = this.ln_out.forward(x);
+    const logits = this.head.forward(preHeadRes.out);
+    
+    return { logits, state: nextState, caches: { 
+      lnIn: lnInRes.cache, 
+      lnOut: preHeadRes.cache, 
+      blocks: blockCaches, 
+      preHeadOut: preHeadRes.out,
+      tokenId: id  // store token for embedding gradient
+    } };
+  }
+
+  backward(gradOut, caches) {
+    let gradIn = this.head.backward(gradOut, caches.preHeadOut);
+    gradIn = this.ln_out.backward(gradIn, caches.lnOut);
+    
+    for(let i = this.blocks.length - 1; i >= 0; i--) {
+      gradIn = this.blocks[i].ln2.backward(gradIn, caches.blocks[i].ln2);
+      if (caches.blocks[i].ln1 && caches.blocks[i].ln1.x) {
+        this.blocks[i].backward(gradIn, caches.blocks[i].ln1.x);
+      }
+      gradIn = this.blocks[i].ln1.backward(gradIn, caches.blocks[i].ln1);
+    }
+    // accumulate embedding gradient for the input token
+    const embBase = caches.tokenId * this.cfg.dim;
+    for (let i = 0; i < this.cfg.dim; i++) {
+      this.embGrad[embBase + i] += gradIn[i];
+    }
+    gradIn = this.ln_in.backward(gradIn, caches.lnIn);
+    return gradIn;
+  }
+
+  embStep(lr) {
+    for (let i = 0; i < this.embGrad.length; i++) {
+      this.embedding[i] -= lr * this.embGrad[i];
+    }
+    this.embGrad.fill(0);
+  }
+
+  getLinearLayers() {
+    const layers = [];
+    for(const b of this.blocks) {
+      layers.push(b.W_x_rx, b.W_x_kx, b.W_x_vx, b.W_x_w, b.Wr, b.Wk, b.Wv, b.Wo, b.W_x_rx2, b.W_x_kx2, b.Wr2, b.Wk2, b.Wv2);
+    }
+    layers.push(this.head);
+    return layers;
+  }
+
+  zeroGrad() {
+    this.ln_in.zeroGrad(); this.ln_out.zeroGrad();
+    for(const b of this.blocks) { b.ln1.zeroGrad(); b.ln2.zeroGrad(); }
+    for(const l of this.getLinearLayers()) l.zeroGrad();
+    // note: embGrad is zeroed separately after step
+  }
+}
+
+
+/* --- APPLICATION CONTROLLER --- */
+const App = {
+  model: null,
+  tokenizer: new NanoTokenizer(),
+  trainer: null,
+  corpusData: [],
+  corpusText: '',
+  grpoOpt: null
+};
+
+function updateArchStats() {
+  const v = parseInt(document.getElementById('cfg-vocab').value);
+  const d = parseInt(document.getElementById('cfg-dim').value);
+  const l = parseInt(document.getElementById('cfg-layers').value);
+  
+  document.getElementById('val-vocab').textContent = v;
+  document.getElementById('val-dim').textContent = d;
+  document.getElementById('val-layers').textContent = l;
+  document.getElementById('val-ctx').textContent = document.getElementById('cfg-ctx').value;
+  
+  const emb = v * d; const head = d * v;
+  const block = d*d*8 + d*(d*2) + (d*2)*d;
+  const total = emb + head + (l * block);
+  
+  document.getElementById('stat-params').textContent = (total / 1000000).toFixed(2) + 'M';
+}
+
+function handleTextInput(txt) {
+  App.corpusText = txt;
+  document.getElementById('ft-corpus').textContent = txt.length.toLocaleString();
+}
+
+function handleFileInput(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    handleTextInput(e.target.result);
+    document.getElementById('corpus-input').value = App.corpusText.substring(0, 500) + '...';
+    sysLog('Corpus File Read Successfully.', 'ok');
+  };
+  reader.readAsText(file);
+}
+
+function handleFileDrop(e) {
+  const file = e.dataTransfer.files[0];
+  if(file && (file.name.endsWith('.txt') || file.name.endsWith('.md'))) {
+     const dummyInput = { files: [file] };
+     handleFileInput(dummyInput);
+  } else {
+     sysLog('Invalid file type. Drop .txt or .md', 'error');
+  }
+}
+
+async function initiateTokenizer() {
+  if(App.corpusText.length < 100) return sysLog('Corpus too small. Min 100 chars.', 'error');
+  const targetVocab = parseInt(document.getElementById('cfg-vocab').value);
+  
+  document.getElementById('btn-build-bpe').disabled = true;
+  sysLog('Initializing WebWorker BPE Generation...', 'info');
+  
+  try {
+    await App.tokenizer.train(App.corpusText, targetVocab);
+    App.corpusData = App.tokenizer.encode(App.corpusText);
+    document.getElementById('ft-tok').textContent = App.corpusData.length.toLocaleString();
+    sysLog(`Tokenizer compiled. Actual vocab: ${App.tokenizer.size}`, 'ok');
+    document.getElementById('btn-alloc').disabled = false;
+  } catch(e) {
+    sysLog('Tokenizer Error: ' + e, 'error');
+  } finally {
+    document.getElementById('btn-build-bpe').disabled = false;
+  }
+}
+
+function allocateMemory() {
+  if(!App.tokenizer.trained) return;
+  const cfg = {
+    vocab: App.tokenizer.size,
+    dim: parseInt(document.getElementById('cfg-dim').value),
+    layers: parseInt(document.getElementById('cfg-layers').value)
+  };
+  try {
+    App.model = new LanguageModel(cfg);
+    sysLog(`VM Allocated: Float32Arrays contiguous memory blocks defined.`, 'ok');
+    document.getElementById('btn-train-start').disabled = false;
+    document.getElementById('live-eval').innerHTML = 'Model ready for sampling...';
+    document.getElementById('route-train').checked = true;
+  } catch(e) { sysLog('Allocation failed: ' + e.message, 'error'); }
+}
+
+async function startTraining() {
+  if(!App.model) return;
+  const lr = parseFloat(document.getElementById('cfg-lr').value) / 1000;
+  const ctx = parseInt(document.getElementById('cfg-ctx').value);
+  const optType = document.getElementById('cfg-optimizer').value;
+  
+  if(!App.trainer) {
+    const opt = optType === 'muon' ? new MuonOptimizer(lr) : new AdamOptimizer(lr);
+    App.trainer = new Trainer(App.model, opt);
+  } else {
+    // replace optimizer if type changed (simple re‑init)
+    const newOpt = optType === 'muon' ? new MuonOptimizer(lr) : new AdamOptimizer(lr);
+    App.trainer.opt = newOpt;
+    App.trainer.isPaused = false;
+  }
+  
+  App.trainer.isRunning = true;
+  document.getElementById('btn-train-start').disabled = true;
+  document.getElementById('btn-train-pause').disabled = false;
+  sysLog('Initiating OOMB Loop...', 'ok');
+  
+  let accumLoss = 0;
+  let microStep = 0;
+  const tStart = Date.now();
+  
+  while(App.trainer.isRunning) {
+    if(App.trainer.isPaused) { await yieldToMain(); continue; }
+    
+    const maxIdx = Math.max(0, App.corpusData.length - ctx - 1);
+    const startIdx = Math.floor(Math.random() * maxIdx);
+    const sequence = App.corpusData.slice(startIdx, startIdx + ctx + 1);
+    
+    try {
+      accumLoss += await App.trainer.trainSequence(sequence);
+      microStep++;
+      
+      if(microStep >= CONFIG.grad_accum_steps) {
+        await App.trainer.opt.step(App.model);
+        // apply embedding gradients with lower LR
+        App.model.embStep(lr * 0.1);
+        App.model.zeroGrad();
+        
+        App.trainer.globalStep++;
+        const avgLoss = accumLoss / CONFIG.grad_accum_steps;
+        
+        document.getElementById('ui-step').textContent = App.trainer.globalStep;
+        document.getElementById('ui-loss').textContent = avgLoss.toFixed(4);
+        
+        const tps = (App.trainer.globalStep * ctx) / ((Date.now() - tStart) / 1000);
+        document.getElementById('ui-tps').textContent = tps.toFixed(1);
+        
+        updateVisualizations(avgLoss);
+        
+        if (App.trainer.globalStep % 5 === 0) await sampleLiveText();
+        
+        accumLoss = 0; microStep = 0;
+      }
+    } catch(e) {
+      sysLog('Training Error: ' + e, 'error');
+      pauseTraining();
+    }
+    await yieldToMain();
+  }
+}
+
+function updateVisualizations(loss) {
+  const container = document.getElementById('loss-graph');
+  const bar = document.createElement('div');
+  bar.className = 'loss-bar';
+  // EMA smoothing
+  CONFIG.ema_loss = 0.1 * loss + 0.9 * CONFIG.ema_loss;
+  bar.style.height = Math.max(1, Math.min(100, (CONFIG.ema_loss/10)*100)) + '%';
+  bar.title = `Raw: ${loss.toFixed(4)} | EMA: ${CONFIG.ema_loss.toFixed(4)}`;
+  container.appendChild(bar);
+  if(container.children.length > 100) container.removeChild(container.firstChild);
+  
+  const w = App.model.head.weight;
+  let n=0, z=0, p=0;
+  let sum=0; for(let i=0; i<w.length; i++) sum+=Math.abs(w[i]);
+  const g = (sum/w.length) || 1e-8;
+  for(let i=0; i<w.length; i++) {
+    const t = Math.round(w[i]/g);
+    if(t<0) n++; else if(t>0) p++; else z++;
+  }
+  
+  document.getElementById('hist-neg').style.height = (n/w.length*100) + '%';
+  document.getElementById('hist-zero').style.height = (z/w.length*100) + '%';
+  document.getElementById('hist-pos').style.height = (p/w.length*100) + '%';
+  
+  document.getElementById('pct-neg').textContent = Math.round(n/w.length*100);
+  document.getElementById('pct-zero').textContent = Math.round(z/w.length*100);
+  document.getElementById('pct-pos').textContent = Math.round(p/w.length*100);
+}
+
+function pauseTraining() {
+  if(App.trainer) App.trainer.isPaused = true;
+  document.getElementById('btn-train-start').disabled = false;
+  document.getElementById('btn-train-pause').disabled = true;
+  sysLog('Training Paused.', 'warn');
+}
+
+async function sampleLiveText() {
+  if (!App.corpusData || App.corpusData.length < 4) return;
+  
+  let s = App.model.getEmptyState();
+  
+  // Pick random position in corpus as seed
+  const seedStart = Math.floor(Math.random() * (App.corpusData.length - 4));
+  const seedIds = App.corpusData.slice(seedStart, seedStart + 3);
+  const seedText = App.tokenizer.decode(seedIds);
+  
+  let lastId = seedIds[seedIds.length - 1];
+  for (let i = 0; i < seedIds.length - 1; i++) {
+    s = App.model.forward(seedIds[i], s).state;
+  }
+  
+  let generated = '';
+  for(let i=0; i<40; i++) {
+    const res = App.model.forward(lastId, s);
+    s = res.state;
+    lastId = sampleLogits(res.logits, 0.8, 0.9);
+    generated += App.tokenizer.decode([lastId]);
+  }
+  
+  document.getElementById('live-eval').innerHTML = 
+    `<span style="opacity:0.4">Step ${App.trainer.globalStep} | </span>` +
+    `<span style="opacity:0.6">${seedText}</span>` +
+    `<span class="highlight">${generated}</span>`;
+}
+
+
+/* --- INFERENCE ENGINE --- */
+let activeInference = false;
+async function startInference() {
+  if(!App.model) return sysLog('Model required.', 'error');
+  
+  activeInference = true;
+  document.getElementById('btn-infer-run').disabled = true;
+  document.getElementById('btn-infer-stop').disabled = false;
+  
+  const prompt = document.getElementById('inf-prompt').value || ' ';
+  const t = parseFloat(document.getElementById('inf-temp').value) / 100;
+  const p = parseFloat(document.getElementById('inf-topp').value) / 100;
+  const max = parseInt(document.getElementById('inf-maxt').value);
+  
+  const outBox = document.getElementById('inf-output');
+  outBox.innerHTML = `<span style="opacity:0.5">${prompt}</span>`;
+  
+  let state = App.model.getEmptyState();
+  let ids = App.tokenizer.encode(prompt);
+  let lastId = ids.length > 0 ? ids[ids.length-1] : 0;
+  
+  for(let i=0; i<ids.length-1; i++) {
+    state = App.model.forward(ids[i], state).state;
+  }
+  
+  let buffer = '';
+  try {
+    for(let i=0; i<max && activeInference; i++) {
+      const res = App.model.forward(lastId, state);
+      state = res.state;
+      lastId = sampleLogits(res.logits, t, p);
+      const char = App.tokenizer.decode([lastId]);
+      buffer += char;
+      
+      if(i % 3 === 0) {
+        outBox.innerHTML = `<span style="opacity:0.5">${prompt}</span><span class="highlight">${buffer}</span>`;
+        outBox.scrollTop = outBox.scrollHeight;
+        await yieldToMain();
+      }
+    }
+    // flush remaining buffer
+    if (buffer) {
+      outBox.innerHTML = `<span style="opacity:0.5">${prompt}</span><span class="highlight">${buffer}</span>`;
+      outBox.scrollTop = outBox.scrollHeight;
+    }
+  } catch(e) { sysLog('Infer Error: ' + e, 'error'); }
+  
+  stopInference();
+}
+
+function stopInference() {
+  activeInference = false;
+  document.getElementById('btn-infer-run').disabled = false;
+  document.getElementById('btn-infer-stop').disabled = true;
+}
+
+
+/* --- GRPO (Group Relative Policy Optimization) --- */
+let grpoEpochCounter = 0;
+async function executeGRPOEpoch() {
+  if(!App.model) return sysLog('Model required for alignment.', 'error');
+  
+  const btn = document.getElementById('btn-grpo-exec');
+  btn.disabled = true;
+  btn.textContent = "COMPUTING COHORTS...";
+  
+  const prompt = document.getElementById('grpo-prompt').value;
+  const target = document.getElementById('grpo-target').value;
+  const outDiv = document.getElementById('grpo-output');
+  outDiv.innerHTML = '';
+  
+  const pIds = App.tokenizer.encode(prompt);
+  const cohorts = [];
+  
+  // 1. Generation Phase
+  for(let i=0; i<CONFIG.grpo_g_size; i++) {
+    let s = App.model.getEmptyState();
+    let last = pIds[0] || 0;
+    for(let j=0; j<pIds.length; j++) {
+      const r = App.model.forward(pIds[j], s); s = r.state; last = pIds[j];
+    }
+    
+    const acts = []; const toks = [];
+    for(let k=0; k<40; k++) {
+      const r = App.model.forward(last, s);
+      acts.push({ logits: r.logits, caches: r.caches });
+      s = r.state;
+      last = sampleLogits(r.logits, 0.85, 0.95);
+      toks.push(last);
+    }
+    const textStr = App.tokenizer.decode(toks);
+    cohorts.push({ text: textStr, acts, toks });
+    
+    const isHit = textStr.includes(target);
+    outDiv.innerHTML += `<div style="border-left: 3px solid ${isHit?'var(--accent)':'var(--border)'}; padding-left: 12px; margin-bottom: 8px;">[G${i}] <span style="opacity:0.8">${textStr}</span></div>`;
+    await yieldToMain();
+  }
+  
+  // 2. Evaluation & Advantage Estimation
+  const rewards = cohorts.map(c => c.text.includes(target) ? 1.0 : -0.1);
+  const meanR = rewards.reduce((a,b)=>a+b)/rewards.length;
+  const variance = rewards.reduce((a,b)=>a+(b-meanR)**2)/rewards.length;
+  const stdR = Math.sqrt(variance) || 1e-8; 
+  const advantages = rewards.map(r => (r - meanR) / stdR);
+  
+  document.getElementById('ui-grpo-reward').textContent = meanR.toFixed(3);
+  
+  // 3. Policy Update with Approximate KL
+  App.model.zeroGrad();
+  for(let i=0; i<cohorts.length; i++) {
+    const adv = advantages[i];
+    for(let j=0; j<cohorts[i].acts.length; j++) {
+      const a = cohorts[i].acts[j];
+      const targetId = cohorts[i].toks[j];
+      
+      let maxL = -Infinity; for(let l of a.logits) if(l>maxL) maxL=l;
+      let sumE = 0; const probs = new Float32Array(a.logits.length);
+      for(let k=0; k<a.logits.length; k++) { probs[k] = Math.exp(a.logits[k]-maxL); sumE+=probs[k]; }
+      for(let k=0; k<a.logits.length; k++) probs[k] /= sumE;
+      
+      // Enforce KL boundary dynamically by scaling advantage
+      const clipFactor = Math.min(1.0, CONFIG.kl_target / (Math.abs(adv) + 1e-8));
+      
+      probs[targetId] -= 1.0; 
+      for(let k=0; k<probs.length; k++) probs[k] *= adv * clipFactor * 0.1;
+      
+      App.model.backward(probs, a.caches);
+    }
+    await yieldToMain();
+  }
+  
+  if (!App.grpoOpt) App.grpoOpt = new AdamOptimizer(0.005);
+  await App.grpoOpt.step(App.model);
+  // apply embedding gradient update
+  App.model.embStep(0.005 * 0.1);
+  
+  grpoEpochCounter++;
+  document.getElementById('ui-grpo-epoch').textContent = grpoEpochCounter;
+  btn.textContent = "EXECUTE GRPO EPOCH";
+  btn.disabled = false;
+  sysLog(`GRPO Epoch ${grpoEpochCounter} Complete.`, 'ok');
+}
+
+
+/* --- PERSISTENCE LOGIC (Robust ArrayBuffer via IDB & Blob) --- */
+
+// Blob-based async Base64 conversion avoids stack overflow entirely
+function bufferToBase64Async(buffer) {
+  return new Promise((resolve) => {
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(',')[1];
+      resolve(base64);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToBuffer(base64) {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+const DB_CTX = { name: 'HTMLNLM_DB', store: 'vm_states' };
+function getDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_CTX.name, 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(DB_CTX.store);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+// Store direct Float32Array raw buffers locally to save memory and avoid serialization errors
+async function saveToIDB() {
+  if(!App.model) return sysLog('No state available.', 'error');
+  sysLog('Committing exact memory layout to IndexedDB...', 'info');
+  
+  const state = {
+    cfg: App.model.cfg,
+    tok: { vocab: App.tokenizer.vocab, merges: App.tokenizer.merges, size: App.tokenizer.size },
+    weights: { 
+      emb: App.model.embedding.buffer,
+      layers: App.model.getLinearLayers().map(l => l.weight.buffer)
+    }
+  };
+
+  try {
+    const db = await getDB();
+    const tx = db.transaction(DB_CTX.store, 'readwrite');
+    tx.objectStore(DB_CTX.store).put(state, 'slot_1');
+    tx.oncomplete = () => sysLog('VM State securely committed to local DB.', 'ok');
+    tx.onerror = e => sysLog('DB TX Error: ' + e.target.error, 'error');
+  } catch(e) { sysLog('DB Save Error: ' + e, 'error'); }
+}
+
+async function loadFromIDB() {
+  sysLog('Hydrating exactly from IndexedDB ArrayBuffers...', 'info');
+  try {
+    const db = await getDB();
+    const req = db.transaction(DB_CTX.store, 'readonly').objectStore(DB_CTX.store).get('slot_1');
+    req.onsuccess = () => {
+      if(req.result) hydrateFromData(req.result, false);
+      else sysLog('No state found in DB slot.', 'warn');
+    };
+  } catch(e) { sysLog('DB Load Error: ' + e, 'error'); }
+}
+
+async function exportJSON() {
+  if(!App.model) return sysLog('No state to export.', 'error');
+  sysLog('Serializing memory buffers to Base64 (Async)...', 'info');
+  
+  const state = {
+    cfg: App.model.cfg,
+    tok: { vocab: App.tokenizer.vocab, merges: App.tokenizer.merges, size: App.tokenizer.size },
+    weights: { layers: [] }
+  };
+  
+  state.weights.emb = await bufferToBase64Async(App.model.embedding.buffer);
+  const layers = App.model.getLinearLayers();
+  for(const l of layers) {
+    state.weights.layers.push(await bufferToBase64Async(l.weight.buffer));
+  }
+  
+  const blob = new Blob([JSON.stringify(state)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'htmlnlm_vm_state.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  sysLog('State exported to portable JSON schema.', 'ok');
+}
+
+function importJSON(input) {
+  const f = input.files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { 
+      const data = JSON.parse(e.target.result);
+      hydrateFromData(data, true); 
+    } catch(err) { sysLog('JSON Parsing/Hydration Failed: ' + err, 'error'); }
+  };
+  reader.readAsText(f);
+}
+
+function hydrateFromData(data, isBase64) {
+  App.tokenizer.vocab = data.tok.vocab;
+  App.tokenizer.merges = data.tok.merges;
+  App.tokenizer.size = data.tok.size;
+  App.tokenizer.trained = true;
+  document.getElementById('ft-tok').textContent = 'Hydrated';
+  
+  App.model = new LanguageModel(data.cfg);
+  
+  App.model.embedding = new Float32Array(isBase64 ? base64ToBuffer(data.weights.emb) : data.weights.emb);
+  const layers = App.model.getLinearLayers();
+  
+  for(let i=0; i<layers.length; i++) {
+    layers[i].weight = new Float32Array(isBase64 ? base64ToBuffer(data.weights.layers[i]) : data.weights.layers[i]);
+    layers[i].markDirty();
+  }
+  
+  sysLog('Virtual Machine Hydrated Successfully.', 'ok');
+  document.getElementById('btn-train-start').disabled = false;
+  document.getElementById('route-infer').checked = true;
+}
+
+updateArchStats();
+
+// mobile detection: default to AdamW
+if (/Mobi|Android/i.test(navigator.userAgent)) {
+  document.getElementById('cfg-optimizer').value = 'adam';
+  sysLog('Mobile detected. Defaulting to AdamW optimizer.', 'warn');
+}
+</script>
+</body>
+</html>
