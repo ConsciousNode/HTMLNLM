@@ -6,7 +6,6 @@
 ![Architecture: RWKV--v6](https://img.shields.io/badge/architecture-RWKV--v6-teal.svg)
 ![Quantization: b1.58](https://img.shields.io/badge/quantization-b1.58%20ternary-orange.svg)
 ![Size: Single File](https://img.shields.io/badge/size-single%20file-purple.svg)
-![Live Demo](https://consciousnode.github.io/HTMLNLM/) 
 
 A complete, self-contained neural language model runtime that runs 
 entirely in your browser. No server. No Python. No CUDA. No 
