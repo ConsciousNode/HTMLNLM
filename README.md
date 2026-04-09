@@ -215,16 +215,11 @@ network with no memory. v2.0 trains the actual architecture.
 
 ## Limitations
 
-This is a research and educational tool. Models trained in-browser
+Models trained in-browser
 will be small (sub-10M parameters practical) and require substantial
 training time to develop coherent outputs. Throughput is
 hardware-dependent — expect 0.5–35 tok/sec depending on device and
 optimizer.
-
-This is not a replacement for Python-based training pipelines for
-production models. It is a demonstration that the full pipeline
-can exist natively in a browser, and a genuinely useful tool for
-small-scale local model development.
 
 ---
 
