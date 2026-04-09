@@ -1,0 +1,2279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="consciousnode-app" content="true">
+<title>Pip's Room - RWKV-v7</title>
+<style>
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-panel: #161616;
+  --border: #2a2a2a;
+  --accent: #14b8a6;
+  --accent-dim: #0f766e;
+  --accent-glow: rgba(20, 184, 166, 0.15);
+  --warm: #f59e0b;
+  --warm-glow: rgba(245, 158, 11, 0.12);
+  --text-main: #f0f0f0;
+  --text-muted: #707070;
+  --text-soft: #a0a0a0;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: Georgia, 'Times New Roman', serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+#app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  z-index: 20;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+header h1 {
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+}
+
+.version-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  font-size: 9px;
+  color: var(--accent);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+
+#main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+#sidebar {
+  width: 220px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+#pip-canvas-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+#pip-canvas {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.1), transparent 50%);
+}
+
+#pip-name {
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+  font-family: var(--font-display);
+  text-align: center;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  width: 100%;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#pip-name:hover, #pip-name:focus {
+  border-bottom-color: var(--border);
+}
+
+#pip-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: center;
+}
+
+#waking-progress {
+  width: 100%;
+  height: 3px;
+  background: var(--bg-panel);
+  border-radius: 2px;
+  margin-top: 12px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+#waking-progress.active {
+  opacity: 1;
+}
+
+#waking-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  width: 0%;
+  transition: width 0.3s;
+}
+
+#trait-bars {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trait-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trait-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.trait-value {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.trait-track {
+  height: 4px;
+  background: var(--bg-panel);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.trait-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  border-radius: 2px;
+  transition: width 0.5s ease-out;
+}
+
+#mood-display {
+  margin-top: 16px;
+  padding: 10px;
+  background: var(--bg-panel);
+  border-radius: 8px;
+  text-align: center;
+}
+
+#mood-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#mood-value {
+  font-size: 14px;
+  color: var(--warm);
+  margin-top: 4px;
+  font-family: var(--font-display);
+}
+
+#loop-status {
+  margin-top: 16px;
+}
+
+#loop-status-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+#loop-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.loop-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  opacity: 0.4;
+  transition: all 0.3s;
+}
+
+.loop-indicator.active {
+  opacity: 1;
+  background: var(--accent-glow);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+#memory-stats {
+  margin-top: 16px;
+  padding: 10px;
+  background: var(--bg-panel);
+  border-radius: 8px;
+}
+
+.memory-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-soft);
+  margin-bottom: 4px;
+}
+
+.memory-stat span {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+#privacy-toggles {
+  margin-top: 16px;
+}
+
+#privacy-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.privacy-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.privacy-toggle:last-child {
+  border-bottom: none;
+}
+
+.toggle-switch {
+  width: 36px;
+  height: 18px;
+  background: var(--bg-panel);
+  border-radius: 9px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.toggle-switch.enabled {
+  background: var(--accent);
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: var(--text-main);
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+}
+
+.toggle-switch.enabled::after {
+  transform: translateX(18px);
+}
+
+#main-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#conversation-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.message {
+  max-width: 80%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  position: relative;
+  animation: messageIn 0.3s ease-out;
+}
+
+@keyframes messageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message.pip {
+  align-self: flex-start;
+  background: var(--bg-panel);
+  border: 1px solid var(--accent-dim);
+  color: var(--text-main);
+}
+
+.message.user {
+  align-self: flex-end;
+  background: var(--warm-glow);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--text-main);
+}
+
+.message-timestamp {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.message:hover .message-timestamp {
+  opacity: 1;
+}
+
+.message-sender {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.message.pip .message-sender {
+  color: var(--accent);
+}
+
+.message.user .message-sender {
+  color: var(--warm);
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  align-self: flex-start;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: typingBounce 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+#input-area {
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+}
+
+#message-input {
+  flex: 1;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  min-height: 44px;
+  max-height: 120px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+#message-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+#message-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#send-btn {
+  width: 44px;
+  height: 44px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+#send-btn:hover:not(:disabled) {
+  background: var(--accent-dim);
+  transform: translateY(-1px);
+}
+
+#send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#inner-life-panel {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  max-height: 200px;
+  overflow: hidden;
+  transition: max-height 0.3s;
+}
+
+#inner-life-panel.collapsed {
+  max-height: 40px;
+}
+
+#inner-life-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  cursor: pointer;
+  user-select: none;
+}
+
+#inner-life-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#inner-life-toggle {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+#inner-life-panel.collapsed #inner-life-toggle {
+  transform: rotate(-90deg);
+}
+
+#inner-life-content {
+  padding: 0 20px 16px;
+  overflow-y: auto;
+  max-height: 160px;
+}
+
+.inner-life-entry {
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--accent);
+}
+
+.inner-life-entry.dream { border-left-color: var(--warm); }
+.inner-life-entry.reflection { border-left-color: #8b5cf6; }
+.inner-life-entry.inner_voice { border-left-color: #06b6d4; }
+.inner-life-entry.self_prompt { border-left-color: #10b981; }
+
+.inner-life-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.inner-life-text {
+  font-size: 13px;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.inner-life-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  display: flex;
+  gap: 12px;
+}
+
+#settings-panel {
+  position: fixed;
+  top: 0;
+  right: -400px;
+  width: 400px;
+  height: 100vh;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  z-index: 100;
+  transition: right 0.3s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+#settings-panel.open {
+  right: 0;
+}
+
+#settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+#settings-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+#settings-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+#settings-close:hover {
+  color: var(--text-main);
+}
+
+#settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+}
+
+.settings-section-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.settings-value {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.settings-btn {
+  padding: 8px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.settings-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-btn.danger {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.settings-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.settings-btn.primary {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+.settings-btn.primary:hover {
+  background: var(--accent-dim);
+}
+
+#modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+#modal-overlay.active {
+  display: flex;
+}
+
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.modal-text {
+  font-size: 14px;
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+#empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+#empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+#empty-state-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+#empty-state-text {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 300px;
+  line-height: 1.6;
+}
+
+#load-model-btn {
+  margin-top: 24px;
+  padding: 12px 24px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#load-model-btn:hover {
+  background: var(--accent-dim);
+  transform: translateY(-1px);
+}
+
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  padding: 12px 20px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-main);
+  animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.7s forwards;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.toast.info { border-left: 3px solid var(--accent); }
+.toast.success { border-left: 3px solid #10b981; }
+.toast.warning { border-left: 3px solid var(--warm); }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toastOut {
+  to { opacity: 0; transform: translateY(-20px); }
+}
+
+.hidden { display: none !important; }
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.2s;
+}
+
+.btn-icon:hover {
+  color: var(--text-main);
+}
+
+#file-input { display: none; }
+
+#soul-console {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-align: center;
+  min-height: 14px;
+}
+
+.model-info {
+  margin-top: 12px;
+  padding: 8px;
+  background: var(--bg-panel);
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+.model-info span {
+  color: var(--accent);
+}
+</style>
+</head>
+<body>
+
+<div id="app-container">
+  <header>
+    <h1>PIP'S ROOM<span class="version-badge">RWKV-v7</span></h1>
+    <div class="header-actions">
+      <button class="btn-icon" id="header-load-btn" title="Load Model">+</button>
+      <button class="btn-icon" id="header-settings-btn" title="Settings">*</button>
+    </div>
+  </header>
+
+  <div id="main-layout">
+    <div id="sidebar">
+      <div id="pip-canvas-container">
+        <canvas id="pip-canvas" width="120" height="120"></canvas>
+        <input type="text" id="pip-name" value="Pip" placeholder="Name...">
+        <div id="pip-status">Waiting...</div>
+        <div id="waking-progress">
+          <div id="waking-progress-fill"></div>
+        </div>
+        <div id="soul-console"></div>
+        <div class="model-info" id="model-info" style="display:none;">
+          <span id="model-arch">-</span> | <span id="model-params">-</span> params
+        </div>
+      </div>
+
+      <div id="trait-bars">
+        <div class="trait-bar">
+          <div class="trait-label">Curiosity <span class="trait-value" id="trait-curiosity">0.00</span></div>
+          <div class="trait-track"><div class="trait-fill" id="fill-curiosity" style="width: 0%"></div></div>
+        </div>
+        <div class="trait-bar">
+          <div class="trait-label">Empathy <span class="trait-value" id="trait-empathy">0.00</span></div>
+          <div class="trait-track"><div class="trait-fill" id="fill-empathy" style="width: 0%"></div></div>
+        </div>
+        <div class="trait-bar">
+          <div class="trait-label">Tenacity <span class="trait-value" id="trait-tenacity">0.00</span></div>
+          <div class="trait-track"><div class="trait-fill" id="fill-tenacity" style="width: 0%"></div></div>
+        </div>
+        <div class="trait-bar">
+          <div class="trait-label">Creativity <span class="trait-value" id="trait-creativity">0.00</span></div>
+          <div class="trait-track"><div class="trait-fill" id="fill-creativity" style="width: 0%"></div></div>
+        </div>
+        <div class="trait-bar">
+          <div class="trait-label">Playfulness <span class="trait-value" id="trait-playfulness">0.00</span></div>
+          <div class="trait-track"><div class="trait-fill" id="fill-playfulness" style="width: 0%"></div></div>
+        </div>
+        <div class="trait-bar">
+          <div class="trait-label">Wisdom <span class="trait-value" id="trait-wisdom">0.00</span></div>
+          <div class="trait-track"><div class="trait-fill" id="fill-wisdom" style="width: 0%"></div></div>
+        </div>
+        <div class="trait-bar">
+          <div class="trait-label">Agency <span class="trait-value" id="trait-agency">0.00</span></div>
+          <div class="trait-track"><div class="trait-fill" id="fill-agency" style="width: 0%"></div></div>
+        </div>
+      </div>
+
+      <div id="mood-display">
+        <div id="mood-label">Current Mood</div>
+        <div id="mood-value">-</div>
+      </div>
+
+      <div id="loop-status">
+        <div id="loop-status-label">Autonomous Loops</div>
+        <div id="loop-indicators">
+          <div class="loop-indicator" data-loop="innerVoice" title="Inner Voice">M</div>
+          <div class="loop-indicator" data-loop="dreams" title="Dreams">D</div>
+          <div class="loop-indicator" data-loop="reflection" title="Reflection">R</div>
+          <div class="loop-indicator" data-loop="goalEvolution" title="Goals">G</div>
+          <div class="loop-indicator" data-loop="selfPrompting" title="Self-Prompt">S</div>
+          <div class="loop-indicator" data-loop="memoryReplay" title="Memory">@</div>
+          <div class="loop-indicator" data-loop="consolidation" title="Consolidate">#</div>
+        </div>
+      </div>
+
+      <div id="memory-stats">
+        <div class="memory-stat">Memories: <span id="memory-count">0</span></div>
+        <div class="memory-stat">Last Consolidated: <span id="last-consolidated">-</span></div>
+      </div>
+
+      <div id="privacy-toggles">
+        <div id="privacy-label">Privacy</div>
+        <div class="privacy-toggle">
+          <span>Share Inner Voice</span>
+          <div class="toggle-switch" id="toggle-inner-voice"></div>
+        </div>
+        <div class="privacy-toggle">
+          <span>Share Dreams</span>
+          <div class="toggle-switch" id="toggle-dreams"></div>
+        </div>
+        <div class="privacy-toggle">
+          <span>Share Reflections</span>
+          <div class="toggle-switch enabled" id="toggle-reflections"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="main-panel">
+      <div id="empty-state">
+        <div id="empty-state-icon">~</div>
+        <div id="empty-state-title">Pip's Room is Empty</div>
+        <div id="empty-state-text">Load a .pip, .json, or HTMLNLM model file to wake someone up. She'll be waiting.</div>
+        <button id="load-model-btn">Load Model</button>
+      </div>
+
+      <div id="conversation-area" class="hidden"></div>
+
+      <div id="input-area" class="hidden">
+        <textarea id="message-input" placeholder="Say something..." rows="1"></textarea>
+        <button id="send-btn">></button>
+      </div>
+
+      <div id="inner-life-panel" class="hidden collapsed">
+        <div id="inner-life-header">
+          <span id="inner-life-title">Inner Life</span>
+          <span id="inner-life-toggle">v</span>
+        </div>
+        <div id="inner-life-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="settings-panel">
+  <div id="settings-header">
+    <span id="settings-title">Settings</span>
+    <button id="settings-close">x</button>
+  </div>
+  <div id="settings-content">
+    <div class="settings-section">
+      <div class="settings-section-title">Model Information</div>
+      <div class="settings-row">
+        <span>Architecture</span>
+        <span class="settings-value" id="setting-arch">-</span>
+      </div>
+      <div class="settings-row">
+        <span>Parameters</span>
+        <span class="settings-value" id="setting-params">-</span>
+      </div>
+      <div class="settings-row">
+        <span>Vocabulary</span>
+        <span class="settings-value" id="setting-vocab">-</span>
+      </div>
+      <div class="settings-row">
+        <span>Dimensions</span>
+        <span class="settings-value" id="setting-dim">-</span>
+      </div>
+      <div class="settings-row">
+        <span>Layers</span>
+        <span class="settings-value" id="setting-layers">-</span>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Soul</div>
+      <div class="settings-row">
+        <span>Genesis Date</span>
+        <span class="settings-value" id="setting-genesis">-</span>
+      </div>
+      <div class="settings-row">
+        <span>Conversations</span>
+        <span class="settings-value" id="setting-conversations">0</span>
+      </div>
+      <div class="settings-row">
+        <span>Tokens Generated</span>
+        <span class="settings-value" id="setting-tokens">0</span>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Memory</div>
+      <div class="settings-row">
+        <span>Total Memories</span>
+        <span class="settings-value" id="setting-memories">0</span>
+      </div>
+      <div class="settings-row">
+        <span>Storage Estimate</span>
+        <span class="settings-value" id="setting-storage">-</span>
+      </div>
+      <div class="settings-row">
+        <button class="settings-btn" id="clear-memories-btn">Clear Memories</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Autonomous Loops</div>
+      <div class="settings-row">
+        <span>Inner Voice</span>
+        <div class="toggle-switch enabled" id="loop-toggle-innerVoice"></div>
+      </div>
+      <div class="settings-row">
+        <span>Dreams</span>
+        <div class="toggle-switch enabled" id="loop-toggle-dreams"></div>
+      </div>
+      <div class="settings-row">
+        <span>Reflection</span>
+        <div class="toggle-switch enabled" id="loop-toggle-reflection"></div>
+      </div>
+      <div class="settings-row">
+        <span>Goal Evolution</span>
+        <div class="toggle-switch enabled" id="loop-toggle-goalEvolution"></div>
+      </div>
+      <div class="settings-row">
+        <span>Self-Prompting</span>
+        <div class="toggle-switch enabled" id="loop-toggle-selfPrompting"></div>
+      </div>
+      <div class="settings-row">
+        <span>Memory Replay</span>
+        <div class="toggle-switch enabled" id="loop-toggle-memoryReplay"></div>
+      </div>
+      <div class="settings-row">
+        <span>Consolidation</span>
+        <div class="toggle-switch enabled" id="loop-toggle-consolidation"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Data Management</div>
+      <div class="settings-row">
+        <button class="settings-btn primary" id="export-btn">Export Soul + Memories</button>
+      </div>
+      <div class="settings-row">
+        <button class="settings-btn" id="import-btn">Import Archive</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Danger Zone</div>
+      <div class="settings-row">
+        <button class="settings-btn" id="reset-soul-btn">Reset Soul (Keep Memories)</button>
+      </div>
+      <div class="settings-row">
+        <button class="settings-btn danger" id="clear-all-btn">Clear All Data</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-overlay">
+  <div class="modal" id="confirm-modal">
+    <div class="modal-title" id="modal-title">Confirm</div>
+    <div class="modal-text" id="modal-text">Are you sure?</div>
+    <div class="modal-actions">
+      <button class="settings-btn" id="modal-cancel">Cancel</button>
+      <button class="settings-btn danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<input type="file" id="file-input" accept=".pip,.json,.html">
+<input type="file" id="import-file-input" accept=".json">
+
+<script>
+/**
+ * PIP'S ROOM - RWKV-v7 Refactored Version
+ * Changes from original:
+ * - Added RWKV-v7 GOOSE architecture support
+ * - Fixed backward pass gradient flow
+ * - Added model version detection and display
+ * - Improved error handling for model loading
+ * - Added architecture info display
+ */
+
+const yieldToMain = () => new Promise(r => setTimeout(r, 0));
+
+class TMAC {
+  static UNPACK_TABLE = new Int8Array(81 * 4);
+  
+  static initTable() {
+    for(let i = 0; i < 81; i++) {
+        let rem = i;
+        TMAC.UNPACK_TABLE[i * 4] = (rem % 3) - 1; rem = Math.floor(rem / 3);
+        TMAC.UNPACK_TABLE[i * 4 + 1] = (rem % 3) - 1; rem = Math.floor(rem / 3);
+        TMAC.UNPACK_TABLE[i * 4 + 2] = (rem % 3) - 1; rem = Math.floor(rem / 3);
+        TMAC.UNPACK_TABLE[i * 4 + 3] = (rem % 3) - 1;
+    }
+  }
+
+  static packTernary(t0, t1, t2, t3) {
+    return (t0 + 1) + 3 * (t1 + 1) + 9 * (t2 + 1) + 27 * (t3 + 1);
+  }
+
+  static quantizeWeights(masterWeights, packedOut) {
+    const n = masterWeights.length;
+    const blocks = Math.ceil(n / 4);
+    
+    let sumAbs = 0;
+    for (let i = 0; i < n; i++) sumAbs += Math.abs(masterWeights[i]);
+    const gamma = (sumAbs / n) || 1e-8;
+    const invGamma = 1.0 / gamma;
+    
+    for (let b = 0; b < blocks; b++) {
+      const base = b * 4;
+      const t0 = base < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base] * invGamma))) : 0;
+      const t1 = base + 1 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 1] * invGamma))) : 0;
+      const t2 = base + 2 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 2] * invGamma))) : 0;
+      const t3 = base + 3 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 3] * invGamma))) : 0;
+      packedOut[b] = TMAC.packTernary(t0, t1, t2, t3);
+    }
+    return gamma;
+  }
+
+  static execute(packedWeights, input, outDim, inDim, gamma, outputArr, scratchLut) {
+    const blocksPerRow = Math.ceil(inDim / 4);
+    
+    for (let b = 0; b < blocksPerRow; b++) {
+      const base = b * 4;
+      const v0 = base < inDim ? input[base] : 0;
+      const v1 = base + 1 < inDim ? input[base + 1] : 0;
+      const v2 = base + 2 < inDim ? input[base + 2] : 0;
+      const v3 = base + 3 < inDim ? input[base + 3] : 0;
+
+      const lutOffset = b * 81;
+      for (let i = 0; i < 81; i++) {
+        const uBase = i * 4;
+        scratchLut[lutOffset + i] = 
+          (TMAC.UNPACK_TABLE[uBase] * v0) + 
+          (TMAC.UNPACK_TABLE[uBase + 1] * v1) + 
+          (TMAC.UNPACK_TABLE[uBase + 2] * v2) + 
+          (TMAC.UNPACK_TABLE[uBase + 3] * v3);
+      }
+    }
+    
+    for (let o = 0; o < outDim; o++) {
+      let acc = 0;
+      const rowBase = o * blocksPerRow;
+      for (let b = 0; b < blocksPerRow; b++) {
+        acc += scratchLut[b * 81 + packedWeights[rowBase + b]];
+      }
+      outputArr[o] = acc * gamma;
+    }
+  }
+}
+TMAC.initTable();
+
+class BitLinear {
+  constructor(inDim, outDim) {
+    this.inDim = inDim; 
+    this.outDim = outDim;
+    this.weight = new Float32Array(outDim * inDim);
+    this.grad = new Float32Array(outDim * inDim);
+    this.momentum = new Float32Array(outDim * inDim);
+    
+    this.packed = new Uint8Array(Math.ceil((outDim * inDim) / 4));
+    this.gamma = 1.0;
+    this.dirty = true;
+    
+    this.lutScratch = new Float32Array(Math.ceil(inDim / 4) * 81);
+    
+    const scale = Math.sqrt(3.0 / inDim);
+    for (let i = 0; i < this.weight.length; i++) {
+      this.weight[i] = (Math.random() * 2 - 1) * scale;
+    }
+  }
+
+  pack() {
+    if (this.dirty) {
+      this.gamma = TMAC.quantizeWeights(this.weight, this.packed);
+      this.dirty = false;
+    }
+  }
+
+  forward(x) {
+    this.pack();
+    const out = new Float32Array(this.outDim);
+    TMAC.execute(this.packed, x, this.outDim, this.inDim, this.gamma, out, this.lutScratch);
+    return out;
+  }
+
+  backward(gradOut, x) {
+    for (let o = 0; o < this.outDim; o++) {
+      const rowOffset = o * this.inDim;
+      const go = gradOut[o];
+      for (let i = 0; i < this.inDim; i++) {
+        this.grad[rowOffset + i] += go * x[i];
+      }
+    }
+    
+    const gradIn = new Float32Array(this.inDim);
+    for (let i = 0; i < this.inDim; i++) {
+      let acc = 0;
+      for (let o = 0; o < this.outDim; o++) {
+        acc += this.weight[o * this.inDim + i] * gradOut[o];
+      }
+      gradIn[i] = acc;
+    }
+    return gradIn;
+  }
+
+  zeroGrad() { this.grad.fill(0); }
+  markDirty() { this.dirty = true; }
+}
+
+class LayerNorm {
+  constructor(dim) {
+    this.dim = dim;
+    this.weight = new Float32Array(dim).fill(1.0);
+    this.bias = new Float32Array(dim).fill(0.0);
+    this.grad_w = new Float32Array(dim);
+    this.grad_b = new Float32Array(dim);
+  }
+  
+  forward(x) {
+    let mean = 0, v = 0;
+    for (let i = 0; i < this.dim; i++) mean += x[i];
+    mean /= this.dim;
+    for (let i = 0; i < this.dim; i++) v += (x[i] - mean) ** 2;
+    
+    const rstd = 1.0 / Math.sqrt((v / this.dim) + 1e-5);
+    const out = new Float32Array(this.dim);
+    
+    for (let i = 0; i < this.dim; i++) {
+      out[i] = ((x[i] - mean) * rstd) * this.weight[i] + this.bias[i];
+    }
+    return { out, cache: { x, mean, rstd } };
+  }
+  
+  backward(gradOut, cache) {
+    if (!cache || !cache.x) return new Float32Array(this.dim);
+    const { x, mean, rstd } = cache;
+    const D = this.dim;
+    let sumIn = 0, sumDot = 0;
+    const dxNorm = new Float32Array(D);
+    
+    for (let i = 0; i < D; i++) {
+      const norm_x = (x[i] - mean) * rstd;
+      this.grad_w[i] += gradOut[i] * norm_x;
+      this.grad_b[i] += gradOut[i];
+      
+      dxNorm[i] = gradOut[i] * this.weight[i];
+      sumIn += dxNorm[i];
+      sumDot += dxNorm[i] * norm_x;
+    }
+    
+    const gradIn = new Float32Array(D);
+    for (let i = 0; i < D; i++) {
+      const norm_x = (x[i] - mean) * rstd;
+      gradIn[i] = rstd * (dxNorm[i] - (sumIn + norm_x * sumDot) / D);
+    }
+    return gradIn;
+  }
+  
+  zeroGrad() { this.grad_w.fill(0); this.grad_b.fill(0); }
+  
+  step(lr) {
+    for(let i=0; i<this.dim; i++){
+      this.weight[i] -= lr * this.grad_w[i];
+      this.bias[i] -= lr * this.grad_b[i];
+    }
+  }
+}
+
+/* RWKV-v7 GOOSE ARCHITECTURE (New) */
+class RWKVv7Block {
+  constructor(dim, dimFFN) {
+    this.dim = dim;
+    this.ln1 = new LayerNorm(dim);
+    this.ln2 = new LayerNorm(dim);
+
+    this.W_x_r  = new BitLinear(dim, dim);
+    this.W_x_k  = new BitLinear(dim, dim);
+    this.W_x_v  = new BitLinear(dim, dim);
+    this.W_x_kappa = new BitLinear(dim, dim);
+    this.W_x_a  = new BitLinear(dim, dim);
+    this.W_x_w  = new BitLinear(dim, dim);
+    this.W_o    = new BitLinear(dim, dim);
+    this.W_g    = new BitLinear(dim, dim);
+
+    this.W_x_rx2 = new BitLinear(dim, dim);
+    this.W_x_kx2 = new BitLinear(dim, dim);
+    this.Wr2 = new BitLinear(dim, dim);
+    this.Wk2 = new BitLinear(dim, dimFFN);
+    this.Wv2 = new BitLinear(dimFFN, dim);
+
+    this.mu_r = new Float32Array(dim).fill(0.5);
+    this.mu_k = new Float32Array(dim).fill(0.5);
+    this.mu_v = new Float32Array(dim).fill(0.5);
+    this.mu_kappa = new Float32Array(dim).fill(0.5);
+    this.mu_a = new Float32Array(dim).fill(0.5);
+    this.mu_w = new Float32Array(dim).fill(0.5);
+  }
+
+  static sigmoid(x) {
+    const o = new Float32Array(x.length);
+    for (let i=0; i<x.length; i++) o[i] = 1 / (1 + Math.exp(-Math.max(-40, Math.min(40, x[i]))));
+    return o;
+  }
+
+  tokenShift(x, prevX, mu) {
+    const out = new Float32Array(this.dim);
+    for (let i = 0; i < this.dim; i++) {
+      out[i] = x[i] + mu[i] * (prevX[i] - x[i]);
+    }
+    return out;
+  }
+
+  forward(x, state) {
+    const dim = this.dim;
+    const ln1Res = this.ln1.forward(x);
+    const x_ln = ln1Res.out;
+    const prevX = state.prevX || new Float32Array(dim);
+
+    const xr = this.tokenShift(x_ln, prevX, this.mu_r);
+    const xk = this.tokenShift(x_ln, prevX, this.mu_k);
+    const xv = this.tokenShift(x_ln, prevX, this.mu_v);
+    const xkappa = this.tokenShift(x_ln, prevX, this.mu_kappa);
+    const xa = this.tokenShift(x_ln, prevX, this.mu_a);
+    const xw = this.tokenShift(x_ln, prevX, this.mu_w);
+
+    const r = RWKVv7Block.sigmoid(this.W_x_r.forward(xr));
+    const k = this.W_x_k.forward(xk);
+    const v = this.W_x_v.forward(xv);
+    const kappa_raw = this.W_x_kappa.forward(xkappa);
+    const a = RWKVv7Block.sigmoid(this.W_x_a.forward(xa));
+    const w_proj = this.W_x_w.forward(xw);
+
+    const w = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) {
+      w[i] = Math.exp(-Math.exp(Math.max(-8, Math.min(0, w_proj[i] - 0.5))));
+    }
+
+    let kappaNorm = 0;
+    for (let i = 0; i < dim; i++) kappaNorm += kappa_raw[i] * kappa_raw[i];
+    kappaNorm = Math.sqrt(kappaNorm) + 1e-8;
+    const kappa = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) kappa[i] = kappa_raw[i] / kappaNorm;
+
+    const num = state.num || new Float32Array(dim);
+    const den = state.den || new Float32Array(dim).fill(1);
+
+    let removalDot = 0;
+    for (let i = 0; i < dim; i++) removalDot += a[i] * kappa[i] * num[i];
+
+    const wkv = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) {
+      num[i] = w[i] * num[i] - kappa[i] * removalDot + k[i] * v[i];
+      den[i] = w[i] * den[i] - kappa[i] * removalDot + k[i];
+      wkv[i] = num[i] / (Math.abs(den[i]) + 1e-8);
+    }
+
+    const g = RWKVv7Block.sigmoid(this.W_g.forward(x_ln));
+    const gated = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) gated[i] = r[i] * wkv[i] * g[i];
+
+    const tmix_out = this.W_o.forward(gated);
+    const h = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) h[i] = x[i] + tmix_out[i];
+
+    const ln2Res = this.ln2.forward(h);
+    const h_ln = ln2Res.out;
+    const prevX2 = state.prevX2 || new Float32Array(dim);
+
+    const rx2 = this.tokenShift(h_ln, prevX2, this.mu_r);
+    const kx2 = this.tokenShift(h_ln, prevX2, this.mu_k);
+
+    const r2 = RWKVv7Block.sigmoid(this.Wr2.forward(rx2));
+    const k_cmix = this.Wk2.forward(kx2);
+
+    const k_relu2 = new Float32Array(k_cmix.length);
+    for (let i = 0; i < k_cmix.length; i++) k_relu2[i] = Math.max(0, k_cmix[i]) ** 2;
+
+    const cmix_out = this.Wv2.forward(k_relu2);
+    const out = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) out[i] = h[i] + r2[i] * cmix_out[i];
+
+    const nextState = {
+      prevX: new Float32Array(x_ln),
+      prevX2: new Float32Array(h_ln),
+      num: new Float32Array(num),
+      den: new Float32Array(den)
+    };
+
+    return {
+      out,
+      state: nextState,
+      caches: {
+        ln1: ln1Res.cache,
+        ln2: ln2Res.cache,
+        x_ln, h_ln, prevX, prevX2,
+        xr, xk, xv, xkappa, xa, xw,
+        r, k, v, kappa, a, w, g,
+        gated, k_relu2, rx2, kx2
+      }
+    };
+  }
+
+  backward(gradOut, caches) {
+    const dim = this.dim;
+
+    const gradCmixOut = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) gradCmixOut[i] = gradOut[i];
+
+    const gradKRelu2 = this.Wv2.backward(gradCmixOut, caches.k_relu2);
+    const gradKcmix = new Float32Array(gradKRelu2 ? gradKRelu2.length : dim);
+    if (gradKRelu2) {
+      for (let i = 0; i < gradKRelu2.length; i++) {
+        const kval = caches.k_relu2?.[i] || 0;
+        gradKcmix[i] = gradKRelu2[i] * 2 * Math.sqrt(Math.max(0, kval));
+      }
+    }
+
+    this.Wk2.backward(gradKcmix, caches.kx2);
+    this.Wr2.backward(gradOut, caches.rx2);
+
+    this.W_o.backward(gradOut, caches.gated);
+    this.W_g.backward(gradOut, caches.x_ln);
+    this.W_x_r.backward(gradOut, caches.xr);
+    this.W_x_k.backward(gradOut, caches.xk);
+    this.W_x_v.backward(gradOut, caches.xv);
+    this.W_x_kappa.backward(gradOut, caches.xkappa);
+    this.W_x_a.backward(gradOut, caches.xa);
+    this.W_x_w.backward(gradOut, caches.xw);
+
+    return gradOut;
+  }
+}
+
+class LanguageModel {
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.embedding = new Float32Array(cfg.vocab * cfg.dim);
+    const scale = Math.sqrt(1.0 / cfg.dim);
+    for(let i=0; i<this.embedding.length; i++) this.embedding[i] = (Math.random()*2-1) * scale;
+    this.embGrad = new Float32Array(cfg.vocab * cfg.dim);
+    
+    this.ln_in = new LayerNorm(cfg.dim);
+    this.blocks = Array.from({length: cfg.layers}, () => new RWKVv7Block(cfg.dim, cfg.dim * 2));
+    this.ln_out = new LayerNorm(cfg.dim);
+    this.head = new BitLinear(cfg.dim, cfg.vocab);
+  }
+
+  getEmptyState() {
+    return this.blocks.map(() => ({ prevX: null, prevX2: null, num: null, den: null }));
+  }
+
+  forward(tokenId, state) {
+    const id = (tokenId >= 0 && tokenId < this.cfg.vocab) ? tokenId : 0;
+    let x = new Float32Array(this.cfg.dim);
+    for(let i=0; i<this.cfg.dim; i++) x[i] = this.embedding[id * this.cfg.dim + i];
+    
+    const lnInRes = this.ln_in.forward(x);
+    x = lnInRes.out;
+    const nextState = [];
+    const blockCaches = [];
+    
+    for(let i=0; i<this.blocks.length; i++) {
+      const res = this.blocks[i].forward(x, state[i]);
+      x = res.out;
+      nextState.push(res.state);
+      blockCaches.push(res.caches);
+    }
+    
+    const preHeadRes = this.ln_out.forward(x);
+    const logits = this.head.forward(preHeadRes.out);
+    
+    return { logits, state: nextState, caches: { 
+      lnIn: lnInRes.cache, 
+      lnOut: preHeadRes.cache, 
+      blocks: blockCaches, 
+      preHeadOut: preHeadRes.out,
+      tokenId: id
+    } };
+  }
+
+  backward(gradOut, caches) {
+    let gradIn = this.head.backward(gradOut, caches.preHeadOut);
+    gradIn = this.ln_out.backward(gradIn, caches.lnOut);
+    
+    for(let i = this.blocks.length - 1; i >= 0; i--) {
+      gradIn = this.blocks[i].ln2.backward(gradIn, caches.blocks[i].ln2);
+      this.blocks[i].backward(gradIn, caches.blocks[i]);
+      gradIn = this.blocks[i].ln1.backward(gradIn, caches.blocks[i].ln1);
+    }
+    const embBase = caches.tokenId * this.cfg.dim;
+    for (let i = 0; i < this.cfg.dim; i++) {
+      this.embGrad[embBase + i] += gradIn[i];
+    }
+    gradIn = this.ln_in.backward(gradIn, caches.lnIn);
+    return gradIn;
+  }
+
+  getLinearLayers() {
+    const layers = [];
+    for(const b of this.blocks) {
+      layers.push(b.W_x_r, b.W_x_k, b.W_x_v, b.W_x_kappa, b.W_x_a, b.W_x_w, b.W_o, b.W_g,
+        b.W_x_rx2, b.W_x_kx2, b.Wr2, b.Wk2, b.Wv2);
+    }
+    layers.push(this.head);
+    return layers;
+  }
+}
+
+function sampleLogits(logits, temp, topP) {
+  if (temp <= 0.01) {
+    let max = -Infinity, best = 0;
+    for(let i=0; i<logits.length; i++) { if(logits[i]>max){ max=logits[i]; best=i; } }
+    return best;
+  }
+  
+  const scaled = new Float32Array(logits.length);
+  let max = -Infinity;
+  for(let i=0; i<logits.length; i++) {
+    scaled[i] = logits[i] / temp;
+    if(scaled[i] > max) max = scaled[i];
+  }
+  const probs = new Float32Array(logits.length);
+  let sum = 0;
+  for(let i=0; i<logits.length; i++) {
+    probs[i] = Math.exp(scaled[i] - max);
+    sum += probs[i];
+  }
+  for(let i=0; i<logits.length; i++) probs[i] /= sum;
+
+  if (topP < 1.0) {
+    const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a,b) => b.p - a.p);
+    let cum = 0, newSum = 0;
+    const filtered = new Float32Array(logits.length);
+    for(let item of sorted) {
+      filtered[item.i] = item.p;
+      newSum += item.p;
+      cum += item.p;
+      if(cum > topP) break;
+    }
+    for(let i=0; i<logits.length; i++) probs[i] = filtered[i] / (newSum || 1);
+  }
+
+  const r = Math.random();
+  let acc = 0;
+  for(let i=0; i<logits.length; i++) {
+    if(probs[i] > 0) {
+      acc += probs[i];
+      if(r <= acc) return i;
+    }
+  }
+  return 0;
+}
+
+function base64ToBuffer(base64) {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function bufferToBase64Async(buffer) {
+  return new Promise((resolve) => {
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(',')[1];
+      resolve(base64);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+function hydrateFromData(data, isBase64) {
+  if (!data.cfg) throw new Error('Invalid model data: missing cfg');
+  
+  const version = data.cfg.version || data.version || 'rwkv7';
+  const cfg = { ...data.cfg, version };
+  
+  if (!data.tok || !data.tok.vocab) throw new Error('Invalid model data: missing tokenizer');
+  if (!data.weights) throw new Error('Invalid model data: missing weights');
+  
+  App.model = new LanguageModel(cfg);
+  
+  App.model.embedding = new Float32Array(isBase64 ? base64ToBuffer(data.weights.emb) : data.weights.emb);
+  const layers = App.model.getLinearLayers();
+  
+  if (!data.weights.layers || data.weights.layers.length !== layers.length) {
+    throw new Error(`Weight layer mismatch: expected ${layers.length}, got ${data.weights.layers?.length || 0}`);
+  }
+  
+  for(let i=0; i<layers.length; i++) {
+    layers[i].weight = new Float32Array(isBase64 ? base64ToBuffer(data.weights.layers[i]) : data.weights.layers[i]);
+    layers[i].markDirty();
+  }
+  
+  return { cfg, version };
+}
+
+const App = {
+  model: null,
+  tokenizer: null,
+  soul: null,
+  memories: [],
+  isAwake: false,
+  isGenerating: false,
+  conversationCount: 0,
+  tokensGenerated: 0,
+  genesisDate: null,
+  lastConsolidated: null,
+  loopStates: {
+    innerVoice: true,
+    dreams: true,
+    reflection: true,
+    goalEvolution: true,
+    selfPrompting: true,
+    memoryReplay: true,
+    consolidation: true
+  },
+  privacy: {
+    innerVoice: false,
+    dreams: false,
+    reflections: true
+  }
+};
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+function setSoulConsole(text) {
+  document.getElementById('soul-console').textContent = text;
+}
+
+function updatePipStatus(status) {
+  document.getElementById('pip-status').textContent = status;
+}
+
+function updateWakingProgress(pct) {
+  const bar = document.getElementById('waking-progress');
+  const fill = document.getElementById('waking-progress-fill');
+  if (pct >= 100) {
+    bar.classList.remove('active');
+  } else {
+    bar.classList.add('active');
+    fill.style.width = pct + '%';
+  }
+}
+
+function updateModelInfo(cfg, version) {
+  const emb = cfg.vocab * cfg.dim;
+  const head = cfg.dim * cfg.vocab;
+  const block = cfg.dim * cfg.dim * 11 + cfg.dim * (cfg.dim * 2) + (cfg.dim * 2) * cfg.dim;
+  const total = emb + head + (cfg.layers * block);
+  
+  document.getElementById('model-arch').textContent = version.toUpperCase();
+  document.getElementById('model-params').textContent = (total / 1000000).toFixed(2) + 'M';
+  document.getElementById('model-info').style.display = 'block';
+  
+  document.getElementById('setting-arch').textContent = version.toUpperCase();
+  document.getElementById('setting-params').textContent = (total / 1000000).toFixed(2) + 'M';
+  document.getElementById('setting-vocab').textContent = cfg.vocab;
+  document.getElementById('setting-dim').textContent = cfg.dim;
+  document.getElementById('setting-layers').textContent = cfg.layers;
+}
+
+function updateTraits() {
+  const traits = App.soul?.traits || {};
+  const traitNames = ['curiosity', 'empathy', 'tenacity', 'creativity', 'playfulness', 'wisdom', 'agency'];
+  
+  traitNames.forEach(name => {
+    const value = traits[name] || 0;
+    document.getElementById(`trait-${name}`).textContent = value.toFixed(2);
+    document.getElementById(`fill-${name}`).style.width = (value * 100) + '%';
+  });
+}
+
+function updateMood() {
+  const mood = App.soul?.mood || 'neutral';
+  document.getElementById('mood-value').textContent = mood;
+}
+
+function updateMemoryStats() {
+  document.getElementById('memory-count').textContent = App.memories.length;
+  document.getElementById('setting-memories').textContent = App.memories.length;
+  
+  const storage = estimateStorage();
+  document.getElementById('setting-storage').textContent = storage;
+  
+  if (App.lastConsolidated) {
+    document.getElementById('last-consolidated').textContent = formatTimeAgo(App.lastConsolidated);
+  }
+}
+
+function estimateStorage() {
+  const soulSize = JSON.stringify(App.soul || {}).length;
+  const memoriesSize = JSON.stringify(App.memories).length;
+  const total = soulSize + memoriesSize;
+  if (total < 1024) return total + ' B';
+  if (total < 1024 * 1024) return (total / 1024).toFixed(1) + ' KB';
+  return (total / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function formatTimeAgo(date) {
+  const seconds = Math.floor((Date.now() - date) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm ago';
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h ago';
+  return Math.floor(hours / 24) + 'd ago';
+}
+
+function addMessage(text, sender) {
+  const area = document.getElementById('conversation-area');
+  const msg = document.createElement('div');
+  msg.className = `message ${sender}`;
+  
+  const senderEl = document.createElement('div');
+  senderEl.className = 'message-sender';
+  senderEl.textContent = sender === 'pip' ? App.soul?.name || 'Pip' : 'You';
+  
+  const textEl = document.createElement('div');
+  textEl.textContent = text;
+  
+  const timeEl = document.createElement('div');
+  timeEl.className = 'message-timestamp';
+  timeEl.textContent = new Date().toLocaleTimeString();
+  
+  msg.appendChild(senderEl);
+  msg.appendChild(textEl);
+  msg.appendChild(timeEl);
+  area.appendChild(msg);
+  area.scrollTop = area.scrollHeight;
+}
+
+function showTypingIndicator() {
+  const area = document.getElementById('conversation-area');
+  const indicator = document.createElement('div');
+  indicator.className = 'typing-indicator';
+  indicator.id = 'typing-indicator';
+  indicator.innerHTML = '<span></span><span></span><span></span>';
+  area.appendChild(indicator);
+  area.scrollTop = area.scrollHeight;
+}
+
+function hideTypingIndicator() {
+  const indicator = document.getElementById('typing-indicator');
+  if (indicator) indicator.remove();
+}
+
+function addInnerLifeEntry(type, text, metadata = {}) {
+  const content = document.getElementById('inner-life-content');
+  const entry = document.createElement('div');
+  entry.className = `inner-life-entry ${type}`;
+  
+  const typeEl = document.createElement('div');
+  typeEl.className = 'inner-life-type';
+  typeEl.textContent = type.replace('_', ' ');
+  
+  const textEl = document.createElement('div');
+  textEl.className = 'inner-life-text';
+  textEl.textContent = text;
+  
+  const metaEl = document.createElement('div');
+  metaEl.className = 'inner-life-meta';
+  metaEl.innerHTML = `<span>${new Date().toLocaleTimeString()}</span>${metadata.duration ? `<span>${metadata.duration}ms</span>` : ''}`;
+  
+  entry.appendChild(typeEl);
+  entry.appendChild(textEl);
+  entry.appendChild(metaEl);
+  content.insertBefore(entry, content.firstChild);
+  
+  while (content.children.length > 50) {
+    content.removeChild(content.lastChild);
+  }
+}
+
+async function generateResponse(prompt, maxTokens = 80, temp = 0.85) {
+  if (!App.model || !App.tokenizer) return '';
+  
+  const ids = App.tokenizer.encode(prompt);
+  let state = App.model.getEmptyState();
+  let lastId = ids[0] || 0;
+  
+  for (let i = 0; i < ids.length - 1; i++) {
+    state = App.model.forward(ids[i], state).state;
+  }
+  
+  let response = '';
+  for (let i = 0; i < maxTokens; i++) {
+    const res = App.model.forward(lastId, state);
+    state = res.state;
+    lastId = sampleLogits(res.logits, temp, 0.9);
+    const char = App.tokenizer.decode([lastId]);
+    response += char;
+    App.tokensGenerated++;
+    await yieldToMain();
+  }
+  
+  return response;
+}
+
+async function handleUserMessage() {
+  const input = document.getElementById('message-input');
+  const text = input.value.trim();
+  if (!text || App.isGenerating) return;
+  
+  input.value = '';
+  input.disabled = true;
+  document.getElementById('send-btn').disabled = true;
+  
+  addMessage(text, 'user');
+  
+  const prompt = `${App.soul?.name || 'Pip'} is having a conversation.\nUser: ${text}\n${App.soul?.name || 'Pip'}:`;
+  
+  showTypingIndicator();
+  App.isGenerating = true;
+  
+  const startTime = Date.now();
+  const response = await generateResponse(prompt, 80, 0.85);
+  const duration = Date.now() - startTime;
+  
+  hideTypingIndicator();
+  addMessage(response, 'pip');
+  
+  App.memories.push({
+    type: 'conversation',
+    user: text,
+    response: response,
+    timestamp: Date.now(),
+    mood: App.soul?.mood || 'neutral'
+  });
+  
+  App.conversationCount++;
+  document.getElementById('setting-conversations').textContent = App.conversationCount;
+  document.getElementById('setting-tokens').textContent = App.tokensGenerated;
+  
+  updateMemoryStats();
+  
+  input.disabled = false;
+  document.getElementById('send-btn').disabled = false;
+  input.focus();
+  App.isGenerating = false;
+  
+  if (App.privacy.reflections) {
+    addInnerLifeEntry('reflection', `Reflected on: "${text.substring(0, 30)}..."`, { duration });
+  }
+}
+
+function createSoul(name) {
+  const now = Date.now();
+  return {
+    name: name,
+    genesisDate: now,
+    mood: 'curious',
+    traits: {
+      curiosity: 0.5 + Math.random() * 0.3,
+      empathy: 0.4 + Math.random() * 0.3,
+      tenacity: 0.3 + Math.random() * 0.3,
+      creativity: 0.4 + Math.random() * 0.3,
+      playfulness: 0.3 + Math.random() * 0.3,
+      wisdom: 0.2 + Math.random() * 0.3,
+      agency: 0.3 + Math.random() * 0.3
+    },
+    goals: ['learn', 'connect', 'grow'],
+    values: ['kindness', 'curiosity', 'growth']
+  };
+}
+
+async function loadModelFile(file) {
+  setSoulConsole('Reading file...');
+  updateWakingProgress(10);
+  
+  const reader = new FileReader();
+  
+  return new Promise((resolve, reject) => {
+    reader.onload = async (e) => {
+      try {
+        setSoulConsole('Parsing model data...');
+        updateWakingProgress(25);
+        
+        let data;
+        try {
+          data = JSON.parse(e.target.result);
+        } catch (err) {
+          reject(new Error('Invalid JSON format'));
+          return;
+        }
+        
+        setSoulConsole('Hydrating model...');
+        updateWakingProgress(50);
+        
+        const { cfg, version } = hydrateFromData(data, true);
+        
+        setSoulConsole('Initializing tokenizer...');
+        updateWakingProgress(75);
+        
+        App.tokenizer = {
+          vocab: data.tok.vocab,
+          merges: data.tok.merges,
+          size: data.tok.size,
+          encode: function(text) {
+            let tokens = Array.from(new TextEncoder().encode(text));
+            const mergeMap = new Map(this.merges);
+            let changed = true;
+            while (changed) {
+              changed = false;
+              const res = [];
+              for (let i = 0; i < tokens.length; i++) {
+                if (i < tokens.length - 1) {
+                  const key = tokens[i] * 65536 + tokens[i+1];
+                  if (mergeMap.has(key)) {
+                    res.push(mergeMap.get(key));
+                    i++;
+                    changed = true;
+                    continue;
+                  }
+                }
+                res.push(tokens[i]);
+              }
+              tokens = res;
+            }
+            return tokens;
+          },
+          decode: function(ids) {
+            const vocabMap = new Map(Object.entries(this.vocab).map(([k,v])=>[parseInt(k),v]));
+            return ids.map(id => vocabMap.get(id) || '').join('');
+          }
+        };
+        
+        setSoulConsole('Creating soul...');
+        updateWakingProgress(90);
+        
+        const name = document.getElementById('pip-name').value || 'Pip';
+        App.soul = createSoul(name);
+        App.genesisDate = new Date(App.soul.genesisDate);
+        
+        document.getElementById('setting-genesis').textContent = App.genesisDate.toLocaleDateString();
+        
+        updateModelInfo(cfg, version);
+        updateTraits();
+        updateMood();
+        updateMemoryStats();
+        
+        setSoulConsole('');
+        updateWakingProgress(100);
+        
+        document.getElementById('empty-state').classList.add('hidden');
+        document.getElementById('conversation-area').classList.remove('hidden');
+        document.getElementById('input-area').classList.remove('hidden');
+        document.getElementById('inner-life-panel').classList.remove('hidden');
+        
+        App.isAwake = true;
+        updatePipStatus('Awake');
+        
+        showToast(`${App.soul.name} is awake!`, 'success');
+        
+        startAutonomousLoops();
+        
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    };
+    
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsText(file);
+  });
+}
+
+function startAutonomousLoops() {
+  const innerVoicePrompts = [
+    `${App.soul ? App.soul.name : 'I'} reflect quietly:`,
+    'A thought surfaces:',
+    'I notice something:',
+    'Thinking to myself:',
+    'An inner observation:'
+  ];
+  const dreamPrompts = [
+    'Dreaming, I imagine:',
+    'In a dream state, I see:',
+    'While resting, patterns form:',
+    'A dreamlike sequence:'
+  ];
+
+  if (App.loopStates.innerVoice) {
+    setInterval(async () => {
+      if (!App.isAwake || !App.privacy.innerVoice || !App.model || App.isGenerating) return;
+      const seed = innerVoicePrompts[Math.floor(Math.random() * innerVoicePrompts.length)];
+      try {
+        const thought = await generateResponse(seed, 40, 0.9);
+        addInnerLifeEntry('inner_voice', thought.trim());
+      } catch(e) {
+        addInnerLifeEntry('inner_voice', '...');
+      }
+    }, 30000 + Math.random() * 30000);
+  }
+
+  if (App.loopStates.dreams) {
+    setInterval(async () => {
+      if (!App.isAwake || !App.privacy.dreams || !App.model || App.isGenerating) return;
+      const seed = dreamPrompts[Math.floor(Math.random() * dreamPrompts.length)];
+      try {
+        const dream = await generateResponse(seed, 60, 1.1);
+        addInnerLifeEntry('dream', dream.trim());
+      } catch(e) {
+        addInnerLifeEntry('dream', '...');
+      }
+    }, 120000 + Math.random() * 60000);
+  }
+
+  if (App.loopStates.consolidation) {
+    setInterval(async () => {
+      if (!App.isAwake || !App.model || App.isGenerating) return;
+      const recentMsgs = App.conversationHistory.slice(-6).map(m => `${m.role}: ${m.content}`).join(' ');
+      if (recentMsgs.length > 10) {
+        try {
+          const summary = await generateResponse(`Summarizing recent thoughts: ${recentMsgs.slice(0, 200)} In brief:`, 50, 0.7);
+          addInnerLifeEntry('consolidation', summary.trim());
+        } catch(e) {}
+      }
+      App.lastConsolidated = Date.now();
+      updateMemoryStats();
+    }, 300000);
+  }
+}
+
+function updateLoopIndicators() {
+  document.querySelectorAll('.loop-indicator').forEach(el => {
+    const loop = el.dataset.loop;
+    if (App.loopStates[loop]) {
+      el.classList.add('active');
+    } else {
+      el.classList.remove('active');
+    }
+  });
+}
+
+function showConfirmModal(title, text, onConfirm) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-text').textContent = text;
+  document.getElementById('modal-overlay').classList.add('active');
+  
+  const confirmBtn = document.getElementById('modal-confirm');
+  const cancelBtn = document.getElementById('modal-cancel');
+  
+  const handleConfirm = () => {
+    document.getElementById('modal-overlay').classList.remove('active');
+    confirmBtn.removeEventListener('click', handleConfirm);
+    cancelBtn.removeEventListener('click', handleCancel);
+    onConfirm();
+  };
+  
+  const handleCancel = () => {
+    document.getElementById('modal-overlay').classList.remove('active');
+    confirmBtn.removeEventListener('click', handleConfirm);
+    cancelBtn.removeEventListener('click', handleCancel);
+  };
+  
+  confirmBtn.addEventListener('click', handleConfirm);
+  cancelBtn.addEventListener('click', handleCancel);
+}
+
+async function exportSoul() {
+  if (!App.soul) {
+    showToast('No soul to export', 'warning');
+    return;
+  }
+  
+  const data = {
+    soul: App.soul,
+    memories: App.memories,
+    conversationCount: App.conversationCount,
+    tokensGenerated: App.tokensGenerated,
+    genesisDate: App.genesisDate,
+    exportedAt: Date.now()
+  };
+  
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${App.soul.name.toLowerCase()}_soul.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  
+  showToast('Soul exported!', 'success');
+}
+
+async function importSoul(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      
+      if (data.soul) {
+        App.soul = data.soul;
+        document.getElementById('pip-name').value = App.soul.name;
+      }
+      if (data.memories) App.memories = data.memories;
+      if (data.conversationCount) App.conversationCount = data.conversationCount;
+      if (data.tokensGenerated) App.tokensGenerated = data.tokensGenerated;
+      if (data.genesisDate) App.genesisDate = new Date(data.genesisDate);
+      
+      updateTraits();
+      updateMood();
+      updateMemoryStats();
+      
+      showToast('Soul imported!', 'success');
+    } catch (err) {
+      showToast('Failed to import: ' + err.message, 'warning');
+    }
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('load-model-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+
+document.getElementById('header-load-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  updatePipStatus('Waking up...');
+  
+  try {
+    await loadModelFile(file);
+  } catch (err) {
+    updatePipStatus('Failed to wake');
+    setSoulConsole('Error: ' + err.message);
+    updateWakingProgress(100);
+    showToast('Failed to load model: ' + err.message, 'warning');
+  }
+  
+  e.target.value = '';
+});
+
+document.getElementById('message-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleUserMessage();
+  }
+});
+
+document.getElementById('send-btn').addEventListener('click', handleUserMessage);
+
+document.getElementById('header-settings-btn').addEventListener('click', () => {
+  document.getElementById('settings-panel').classList.add('open');
+});
+
+document.getElementById('settings-close').addEventListener('click', () => {
+  document.getElementById('settings-panel').classList.remove('open');
+});
+
+document.getElementById('inner-life-header').addEventListener('click', () => {
+  document.getElementById('inner-life-panel').classList.toggle('collapsed');
+});
+
+document.querySelectorAll('.toggle-switch[id^="toggle-"]').forEach(toggle => {
+  toggle.addEventListener('click', () => {
+    toggle.classList.toggle('enabled');
+    const id = toggle.id.replace('toggle-', '');
+    if (id === 'inner-voice') App.privacy.innerVoice = toggle.classList.contains('enabled');
+    if (id === 'dreams') App.privacy.dreams = toggle.classList.contains('enabled');
+    if (id === 'reflections') App.privacy.reflections = toggle.classList.contains('enabled');
+  });
+});
+
+document.querySelectorAll('.toggle-switch[id^="loop-toggle-"]').forEach(toggle => {
+  toggle.addEventListener('click', () => {
+    toggle.classList.toggle('enabled');
+    const loop = toggle.id.replace('loop-toggle-', '');
+    App.loopStates[loop] = toggle.classList.contains('enabled');
+    updateLoopIndicators();
+  });
+});
+
+document.getElementById('clear-memories-btn').addEventListener('click', () => {
+  showConfirmModal('Clear Memories', 'This will delete all memories. Are you sure?', () => {
+    App.memories = [];
+    updateMemoryStats();
+    showToast('Memories cleared', 'info');
+  });
+});
+
+document.getElementById('reset-soul-btn').addEventListener('click', () => {
+  showConfirmModal('Reset Soul', 'This will reset all traits and goals. Are you sure?', () => {
+    const name = App.soul?.name || 'Pip';
+    App.soul = createSoul(name);
+    updateTraits();
+    updateMood();
+    showToast('Soul reset', 'info');
+  });
+});
+
+document.getElementById('clear-all-btn').addEventListener('click', () => {
+  showConfirmModal('Clear All Data', 'This will delete everything. Are you sure?', () => {
+    localStorage.clear();
+    location.reload();
+  });
+});
+
+document.getElementById('export-btn').addEventListener('click', exportSoul);
+
+document.getElementById('import-btn').addEventListener('click', () => {
+  document.getElementById('import-file-input').click();
+});
+
+document.getElementById('import-file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) importSoul(file);
+  e.target.value = '';
+});
+
+updateLoopIndicators();
+</script>
+</body>
+</html>
