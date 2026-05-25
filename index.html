@@ -2,2452 +2,478 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>HTMLNLM — Browser Neural Runtime (RWKV-v7)</title>
-<!-- 
-  HTMLNLM RWKV-v7 — Correct Backward Pass
-  ConsciousNode SoftWorks
-  Authors: Kham (architecture & constraint engineering)
-           Kehai Interim (full BPTT derivation & implementation)
-           Ed Interim (MuonOptimizer mu fix & final verification)
--->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTMLNLM — Browser Neural Runtime</title>
 <style>
-/* HTMLNLM STYHEET - Debugged & Enhanced */
-:root {
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #171717;
-  --bg-tertiary: #262626;
-  --border: #404040;
-  --accent: #14b8a6; 
-  --accent-dim: #0f766e;
-  --accent-glow: rgba(20, 184, 166, 0.2);
-  --text-main: #f5f5f5;
-  --text-muted: #a3a3a3;
-  --error: #ef4444;
-  --warning: #f59e0b;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --radius: 12px;
-  --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
-  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body, html { height: 100%; background: var(--bg-primary); color: var(--text-main); font-family: var(--font-sans); font-size: 14px; overflow: hidden; }
+  :root {
+    --bg:      #0a0a0a;
+    --bg2:     #171717;
+    --bg3:     #262626;
+    --border:  rgba(255,255,255,0.1);
+    --accent:  #14b8a6;
+    --accent2: #7c5cbf;
+    --green:   #22c55e;
+    --text:    #f5f5f5;
+    --muted:   rgba(245,245,245,0.55);
+    --dim:     rgba(245,245,245,0.25);
+  }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
 
-#app-container { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: rgba(10,10,10,0.92);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+  }
 
-header { display: flex; align-items: center; padding: 16px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 12px; }
-header h1 { color: var(--accent); font-size: 20px; font-weight: 800; font-family: var(--font-mono); letter-spacing: -0.5px; margin-right: 8px; }
-.subtitle { color: var(--text-muted); font-size: 13px; font-weight: 500; display: none; }
-@media (min-width: 600px) { .subtitle { display: block; } }
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .logo span { color: var(--dim); font-weight: 400; }
 
-.status-pill { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-glow); padding: 6px 14px; border-radius: 20px; border: 1px solid var(--accent-dim); letter-spacing: 0.5px; white-space: nowrap; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1); }
+  nav { display: flex; gap: 24px; }
+  nav a {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  nav a:hover { color: var(--text); }
 
-@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
+  .hero {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 88px 40px 72px;
+    text-align: center;
+  }
 
-input[type="radio"][name="route"] { display: none; }
+  .eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
 
-nav { display: flex; background: var(--bg-secondary); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; z-index: 15; }
-nav::-webkit-scrollbar { display: none; }
-.nav-tab { padding: 16px 24px; cursor: pointer; color: var(--text-muted); font-size: 12px; font-weight: 700; letter-spacing: 0.5px; border-bottom: 2px solid transparent; transition: all var(--transition-fast); white-space: nowrap; user-select: none; }
-.nav-tab:hover { color: var(--text-main); background: var(--bg-tertiary); }
+  h1 {
+    font-size: clamp(2.2rem, 5.5vw, 3.6rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 20px;
+  }
 
-body:has(#route-setup:checked) .nav-tab[for="route-setup"],
-body:has(#route-train:checked) .nav-tab[for="route-train"],
-body:has(#route-align:checked) .nav-tab[for="route-align"],
-body:has(#route-infer:checked) .nav-tab[for="route-infer"],
-body:has(#route-io:checked) .nav-tab[for="route-io"] { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-primary); }
+  .sub {
+    font-size: 1.05rem;
+    color: var(--muted);
+    max-width: 560px;
+    margin: 0 auto 36px;
+    font-weight: 300;
+  }
 
-.screen { display: none; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 24px; gap: 24px; align-content: flex-start; flex: 1; }
-body:has(#route-setup:checked) #screen-setup { display: flex; flex-direction: column; }
-body:has(#route-train:checked) #screen-train { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-body:has(#route-align:checked) #screen-align { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-body:has(#route-infer:checked) #screen-infer { display: flex; flex-direction: column; }
-body:has(#route-io:checked) #screen-io { display: flex; flex-direction: column; }
+  .buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
 
-.panel { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; display: flex; flex-direction: column; box-shadow: var(--shadow); transition: transform var(--transition-fast); position: relative; overflow: hidden; }
-.panel-header { font-family: var(--font-mono); color: var(--text-main); font-size: 13px; font-weight: 700; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.5px; }
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 12px 28px;
+    border-radius: 6px;
+    text-decoration: none;
+    display: inline-block;
+    transition: opacity 0.15s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
 
-.control-group { margin-bottom: 24px; }
-.control-group label { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 13px; margin-bottom: 10px; font-weight: 600; }
-.control-group input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 6px; background: var(--bg-tertiary); border-radius: 4px; appearance: none; outline: none; margin-top: 4px; }
-.control-group input[type="range"]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; transition: transform 0.1s; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
-.control-group input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
-.control-group input[type="text"], .control-group textarea, .control-group select { width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-main); font-family: var(--font-mono); font-size: 13px; padding: 14px; border-radius: 8px; outline: none; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
-.control-group input[type="text"]:focus, .control-group textarea:focus, .control-group select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
-.control-group textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
-.val-display { color: var(--accent); font-weight: 700; font-family: var(--font-mono); background: var(--bg-primary); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); }
-.val-input { color: var(--accent); font-weight: 700; font-family: var(--font-mono); background: var(--bg-primary); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); width: 80px; text-align: right; outline: none; -moz-appearance: textfield; }
-.val-input::-webkit-outer-spin-button, .val-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.val-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 12px 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    display: inline-block;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
 
-.btn { padding: 14px 20px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-main); font-family: var(--font-sans); font-size: 13px; font-weight: 700; cursor: pointer; border-radius: 8px; transition: all var(--transition-fast); text-align: center; letter-spacing: 0.5px; user-select: none; display: inline-flex; justify-content: center; align-items: center; gap: 8px; }
-.btn:hover:not(:disabled) { background: var(--bg-primary); border-color: var(--accent); color: var(--accent); box-shadow: 0 4px 12px var(--accent-glow); transform: translateY(-1px); }
-.btn:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
-.btn.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
-.btn.primary:hover:not(:disabled) { background: var(--accent); color: #000; }
-.btn.danger { border-color: var(--error); color: var(--error); background: rgba(239, 68, 68, 0.05); }
-.btn.danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.15); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2); }
-.btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: auto; }
-.btn-row .btn { flex: 1; min-width: 140px; }
+  .badges {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 36px;
+  }
 
-.css-graph-container { display: flex; align-items: flex-end; gap: 1px; height: 160px; background: var(--bg-primary); border: 1px solid var(--border); padding: 4px; border-radius: 8px; overflow: hidden; position: relative; }
-.loss-bar { flex: 1; background: var(--accent); transition: height 0.15s ease-out; min-height: 1px; max-width: 8px; opacity: 0.85; border-radius: 2px 2px 0 0; will-change: height; }
-.loss-bar:hover { opacity: 1; background: #fff; transform: scaleY(1.02); }
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+  }
+  .b-teal   { background: rgba(20,184,166,0.12); color: var(--accent); border: 1px solid rgba(20,184,166,0.25); }
+  .b-green  { background: rgba(34,197,94,0.12);  color: var(--green);  border: 1px solid rgba(34,197,94,0.25); }
+  .b-purple { background: rgba(124,92,191,0.12); color: #a78bfa;       border: 1px solid rgba(124,92,191,0.25); }
+  .b-dim    { background: rgba(255,255,255,0.05); color: var(--dim);   border: 1px solid var(--border); }
 
-.hist-container { display: flex; gap: 8px; align-items: flex-end; height: 120px; margin-top: 16px; background: var(--bg-primary); padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
-.hist-bar { flex: 1; transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1); min-height: 4px; border-radius: 6px 6px 0 0; will-change: height; position: relative; }
-.hist-bar::after { content: attr(data-val); position: absolute; top: -20px; width: 100%; text-align: center; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); opacity: 0; transition: opacity 0.2s; }
-.hist-bar:hover::after { opacity: 1; }
-#hist-neg { background: var(--error); }
-#hist-zero { background: var(--border); }
-#hist-pos { background: var(--accent); }
+  hr { border: none; border-top: 1px solid var(--border); }
 
-.dropzone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--text-muted); cursor: pointer; transition: all var(--transition-fast); background: var(--bg-primary); position: relative; overflow: hidden; }
-.dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
-.terminal-output { flex: 1; background: #000; border: 1px solid var(--border); padding: 16px; font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); overflow-y: auto; overflow-x: hidden; border-radius: 8px; line-height: 1.6; min-height: 200px; box-shadow: inset 0 2px 15px rgba(0,0,0,0.5); word-wrap: break-word; white-space: pre-wrap; }
-.terminal-output span.highlight { color: var(--accent); font-weight: bold; text-shadow: 0 0 8px var(--accent-glow); }
-.terminal-output span.sys-err { color: var(--error); }
-.terminal-output span.sys-warn { color: var(--warning); }
-.terminal-output span.sys-ok { color: var(--accent); }
+  .section {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 64px 40px;
+  }
 
-.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 16px; margin-top: 24px; background: var(--bg-primary); padding: 16px; border-radius: 8px; border: 1px solid var(--border); }
-.stat-item { display: flex; flex-direction: column; font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.stat-item span { font-size: 18px; font-weight: 700; color: var(--text-main); font-family: var(--font-mono); margin-top: 6px; letter-spacing: -0.5px; text-transform: none; }
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
 
-footer { display: flex; gap: 24px; align-items: center; padding: 12px 24px; background: var(--bg-secondary); border-top: 1px solid var(--border); font-size: 12px; font-family: var(--font-mono); overflow-x: auto; white-space: nowrap; flex-shrink: 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); z-index: 20; }
-.footer-stat { color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
-.footer-stat span { color: var(--accent); font-weight: 700; }
-.mem-gauge-wrapper { width: 140px; height: 10px; background: var(--bg-primary); border-radius: 5px; overflow: hidden; border: 1px solid var(--border); display: inline-block; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
-#mem-gauge-fill { height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); width: 0%; transition: width 0.5s ease-out; }
+  h2 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 28px;
+  }
 
-.version-badge { display: inline-block; padding: 2px 8px; background: var(--accent-glow); border: 1px solid var(--accent-dim); border-radius: 4px; font-size: 10px; color: var(--accent); margin-left: 8px; }
+  /* successor callout */
+  .successor {
+    background: var(--bg2);
+    border: 1px solid rgba(124,92,191,0.3);
+    border-radius: 8px;
+    padding: 20px 24px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 48px;
+  }
+  .successor-icon {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .successor-body h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a78bfa;
+    margin-bottom: 6px;
+  }
+  .successor-body p {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 300;
+    line-height: 1.6;
+  }
+  .successor-body a { color: #a78bfa; text-decoration: none; }
+  .successor-body a:hover { text-decoration: underline; }
 
-@media (max-width: 768px) {
-  .screen { padding: 16px; gap: 16px; }
-  .panel { padding: 16px; }
-  .btn-row { flex-direction: column; }
-  .btn-row .btn { width: 100%; }
-}
+  /* component table */
+  .comp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+  }
+  .comp-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    transition: border-color 0.15s;
+  }
+  .comp-card:hover { border-color: rgba(20,184,166,0.3); }
+  .comp-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+  .comp-desc {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 300;
+    line-height: 1.6;
+  }
+
+  /* stack table */
+  .stack-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .stack-table th {
+    text-align: left;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dim);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stack-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    vertical-align: top;
+  }
+  .stack-table tr:last-child td { border-bottom: none; }
+  .stack-table td:first-child { color: var(--text); font-weight: 500; }
+  .stack-table a { color: var(--accent); text-decoration: none; }
+  .stack-table a:hover { text-decoration: underline; }
+  .status-live { color: var(--green); font-family: 'Space Mono', monospace; font-size: 11px; }
+  .status-dev  { color: var(--accent); font-family: 'Space Mono', monospace; font-size: 11px; }
+
+  /* credits */
+  .credits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+  }
+  .credit-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .credit-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .credit-role {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 300;
+    line-height: 1.6;
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 28px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--dim);
+  }
+  footer a { color: var(--dim); text-decoration: none; }
+  footer a:hover { color: var(--muted); }
 </style>
 </head>
 <body>
 
-<input type="radio" name="route" id="route-setup" checked>
-<input type="radio" name="route" id="route-train">
-<input type="radio" name="route" id="route-align">
-<input type="radio" name="route" id="route-infer">
-<input type="radio" name="route" id="route-io">
-
-<div id="app-container">
-  <header>
-    <h1>HTMLNLM<span class="version-badge">RWKV-v7</span></h1>
-    <span class="subtitle">Sovereign Browser-Based Compute</span>
-    <div class="status-pill">
-      <div class="status-dot"></div>
-      LOCAL SANDBOX
-    </div>
-  </header>
-
+<header>
+  <div class="logo">HTMLNLM <span>· Browser Neural Runtime</span></div>
   <nav>
-    <label class="nav-tab" for="route-setup">1. ARCHITECTURE</label>
-    <label class="nav-tab" for="route-train">2. PRE-TRAIN</label>
-    <label class="nav-tab" for="route-align">3. ALIGN (GRPO)</label>
-    <label class="nav-tab" for="route-infer">4. INFERENCE</label>
-    <label class="nav-tab" for="route-io">5. PERSISTENCE</label>
+    <a href="#components">Components</a>
+    <a href="#stack">Stack</a>
+    <a href="#credits">Credits</a>
+    <a href="https://github.com/ConsciousNode/HTMLNLM">GitHub</a>
   </nav>
+</header>
 
-  <div class="screen" id="screen-setup">
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:24px;">
-      
-      <div class="panel">
-        <div class="panel-header">NETWORK TOPOLOGY (RWKV-v7 GOOSE)</div>
-        <div class="control-group">
-          <label><span>Vocabulary Capacity</span> <input type="number" class="val-input" id="val-vocab" min="256" max="8192" step="256" value="2048" onchange="document.getElementById('cfg-vocab').value=this.value; updateArchStats()"></label>
-          <input type="range" id="cfg-vocab" min="256" max="8192" step="256" value="2048" oninput="document.getElementById('val-vocab').value=this.value; updateArchStats()">
-        </div>
-        <div class="control-group">
-          <label><span>Hidden Dimension (D)</span> <input type="number" class="val-input" id="val-dim" min="64" max="512" step="64" value="256" onchange="document.getElementById('cfg-dim').value=this.value; updateArchStats()"></label>
-          <input type="range" id="cfg-dim" min="64" max="512" step="64" value="256" oninput="document.getElementById('val-dim').value=this.value; updateArchStats()">
-        </div>
-        <div class="control-group">
-          <label><span>Recurrent Layers (L)</span> <input type="number" class="val-input" id="val-layers" min="1" max="16" step="1" value="4" onchange="document.getElementById('cfg-layers').value=this.value; updateArchStats()"></label>
-          <input type="range" id="cfg-layers" min="1" max="16" step="1" value="4" oninput="document.getElementById('val-layers').value=this.value; updateArchStats()">
-        </div>
-        <div class="control-group">
-          <label><span>OOMB Context Chunk</span> <input type="number" class="val-input" id="val-ctx" min="64" max="1024" step="64" value="128" onchange="document.getElementById('cfg-ctx').value=this.value; updateArchStats()"></label>
-          <input type="range" id="cfg-ctx" min="64" max="1024" step="64" value="128" oninput="document.getElementById('val-ctx').value=this.value; updateArchStats()">
-        </div>
-        <div class="control-group">
-          <label><span>Architecture Version</span></label>
-          <select id="cfg-version" onchange="updateArchStats()" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-main); font-family:var(--font-mono); font-size:13px; padding:10px; border-radius:8px; outline:none;">
-            <option value="rwkv7" selected>RWKV-v7 (GOOSE - Latest)</option>
-            <option value="rwkv6">RWKV-v6 (Finch - Legacy)</option>
-          </select>
-        </div>
-        <div class="control-group">
-          <label><span>Optimizer</span></label>
-          <select id="cfg-optimizer" onchange="updateOptimizerUI(this.value)" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-main); font-family:var(--font-mono); font-size:13px; padding:10px; border-radius:8px; outline:none;">
-            <option value="adam">AdamW (Fast / Mobile)</option>
-            <option value="muon" selected>Muon (Quality / Desktop)</option>
-          </select>
-        </div>
-        <div style="margin-top:auto; padding-top:20px; border-top:1px solid var(--border);">
-          <div style="font-family:var(--font-mono); font-size:32px; color:var(--accent); font-weight:800; letter-spacing:-1px;" id="stat-params">0.00M</div>
-          <div style="color:var(--text-muted); font-size:12px; margin-top:4px; font-weight:600; text-transform:uppercase;">Total Ternary Parameters</div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">CORPUS INGESTION & BPE</div>
-        <div class="dropzone" id="dropzone" onclick="document.getElementById('file-upload').click()" ondragover="event.preventDefault(); this.classList.add('dragover');" ondragleave="this.classList.remove('dragover');" ondrop="event.preventDefault(); this.classList.remove('dragover'); handleFileDrop(event);">
-          <svg style="width:36px;height:36px;margin-bottom:12px;opacity:0.8;color:var(--accent);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><br>
-          <span style="font-size:14px; font-weight:700; color:var(--text-main);">Drop .txt corpus here or click</span><br>
-          <span style="font-size:12px; opacity:0.6; margin-top:8px; display:inline-block;">Requires uncompressed UTF-8 text</span>
-        </div>
-        <input type="file" id="file-upload" accept=".txt,.md" style="display:none" onchange="handleFileInput(this)">
-        
-        <div class="control-group" style="margin-top:24px;">
-          <textarea id="corpus-input" placeholder="Or paste raw text buffer directly..." oninput="handleTextInput(this.value)"></textarea>
-        </div>
-        
-        <div class="btn-row">
-          <button class="btn" id="btn-build-bpe" onclick="initiateTokenizer()">COMPILE BPE</button>
-          <button class="btn primary" id="btn-alloc" onclick="allocateMemory()" disabled>ALLOCATE VM</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel" style="margin-top: 24px; flex: 1; min-height: 250px;">
-      <div class="panel-header" style="margin-bottom: 12px;">
-        SYSTEM TELEMETRY
-        <button class="btn" style="padding:6px 14px; font-size:11px; min-width:auto; height:auto;" onclick="document.getElementById('sys-logs').innerHTML=''">CLEAR LOGS</button>
-      </div>
-      <div id="sys-logs" class="terminal-output"></div>
-    </div>
+<div class="hero">
+  <div class="eyebrow">ConsciousNode SoftWorks · v1.0</div>
+  <h1>Train a language model.<br>In a browser tab.</h1>
+  <p class="sub">Complete pretraining and GRPO alignment pipeline — RWKV-v7, BitNet b1.58, zero dependencies. Open the file. No install required.</p>
+  <div class="buttons">
+    <a href="HTMLNLM.html" class="btn-primary">▶ Launch HTMLNLM</a>
+    <a href="https://github.com/ConsciousNode/HTMLNLM" class="btn-secondary">View Source</a>
   </div>
-
-  <div class="screen" id="screen-train">
-    <div style="display:flex; flex-direction:column; gap:24px;">
-      <div class="panel">
-        <div class="panel-header">OOMB CHUNK-RECURRENT LOSS</div>
-        <div class="css-graph-container" id="loss-graph"></div>
-        <div class="stat-grid">
-          <div class="stat-item">Global Step <span id="ui-step">0</span></div>
-          <div class="stat-item">Current Loss <span id="ui-loss">0.0000</span></div>
-          <div class="stat-item">Throughput <span id="ui-tps">0.0</span> <span style="font-size:11px; font-weight:normal; color:var(--text-muted); text-transform:none;">tok/sec</span></div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">QUANTIZATION DISTRIBUTION (b1.58)</div>
-        <div class="hist-container">
-          <div class="hist-bar" id="hist-neg" style="height:33.3%" data-val="-1"></div>
-          <div class="hist-bar" id="hist-zero" style="height:33.4%" data-val="0"></div>
-          <div class="hist-bar" id="hist-pos" style="height:33.3%" data-val="+1"></div>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:13px; margin-top:16px; font-weight:700;">
-          <span style="color:var(--error)">-1 (<span id="pct-neg">33</span>%)</span>
-          <span style="color:var(--text-muted)">0 (<span id="pct-zero">34</span>%)</span>
-          <span style="color:var(--accent)">+1 (<span id="pct-pos">33</span>%)</span>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">OPTIMIZER (QUINTIC MUON)</div>
-        <div class="control-group">
-          <label><span id="lr-label">Learning Rate (Muon)</span> <input type="number" class="val-input" id="val-lr" min="0.001" max="0.1" step="0.001" value="0.020" onchange="syncLRFromInput(this.value)"></label>
-          <input type="range" id="cfg-lr" min="1" max="100" value="20" oninput="document.getElementById('val-lr').value=(this.value/1000).toFixed(3)">
-        </div>
-        <div class="btn-row">
-          <button class="btn primary" id="btn-train-start" onclick="startTraining()" disabled>START LOOP</button>
-          <button class="btn" id="btn-train-pause" onclick="pauseTraining()" disabled>PAUSE</button>
-        </div>
-      </div>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:24px;">
-      <div class="panel">
-        <div class="panel-header">TRAINING AUTOMATION</div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom:20px;">
-          <div class="control-group" style="margin:0;">
-            <label style="margin-bottom:6px;"><span>Auto-Save</span></label>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <input type="checkbox" id="auto-save-en" style="accent-color:var(--accent); width:16px; height:16px; cursor:pointer;">
-              <span style="color:var(--text-muted); font-size:12px;">every</span>
-              <input type="number" class="val-input" id="auto-save-steps" value="500" min="50" step="50" style="width:70px;">
-              <span style="color:var(--text-muted); font-size:12px;">steps</span>
-            </div>
-          </div>
-          <div class="control-group" style="margin:0;">
-            <label style="margin-bottom:6px;"><span>Auto-Pause on Loss</span></label>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <input type="checkbox" id="auto-pause-en" style="accent-color:var(--accent); width:16px; height:16px; cursor:pointer;">
-              <span style="color:var(--text-muted); font-size:12px;">when loss &lt;</span>
-              <input type="number" class="val-input" id="auto-pause-loss" value="1.0" min="0.01" step="0.01" style="width:70px;">
-            </div>
-          </div>
-        </div>
-        <div class="control-group">
-          <label><span>LR Schedule</span></label>
-          <select id="lr-schedule" onchange="updateScheduleUI(this.value)" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-main); font-family:var(--font-mono); font-size:13px; padding:10px; border-radius:8px; outline:none; margin-bottom:12px;">
-            <option value="manual">Manual (No Schedule)</option>
-            <option value="cosine">Cosine Decay with Warmup</option>
-            <option value="step">Step Decay</option>
-            <option value="exp">Exponential Decay</option>
-          </select>
-        </div>
-        <div id="sched-params" style="display:none; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:16px; margin-top:-8px; margin-bottom:16px;">
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div id="sp-warmup" style="display:none;">
-              <label style="color:var(--text-muted); font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Warmup Steps</label>
-              <input type="number" class="val-input" id="sched-warmup" value="100" min="0" step="10" style="width:100%;">
-            </div>
-            <div id="sp-total">
-              <label style="color:var(--text-muted); font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Total Steps</label>
-              <input type="number" class="val-input" id="sched-total" value="2000" min="100" step="100" style="width:100%;">
-            </div>
-            <div>
-              <label style="color:var(--text-muted); font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Min LR</label>
-              <input type="number" class="val-input" id="sched-minlr" value="0.0001" min="0.0001" step="0.0001" style="width:100%;">
-            </div>
-            <div id="sp-decay" style="display:none;">
-              <label style="color:var(--text-muted); font-size:12px; font-weight:600; display:block; margin-bottom:4px;" id="decay-label">Decay Factor</label>
-              <input type="number" class="val-input" id="sched-decay" value="0.5" min="0.01" max="0.99" step="0.01" style="width:100%;">
-            </div>
-            <div id="sp-stepsize" style="display:none;">
-              <label style="color:var(--text-muted); font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Step Size</label>
-              <input type="number" class="val-input" id="sched-stepsize" value="500" min="10" step="10" style="width:100%;">
-            </div>
-          </div>
-          <div style="margin-top:10px; font-size:11px; color:var(--text-muted); font-family:var(--font-mono);" id="sched-desc"></div>
-        </div>
-        <div class="stat-grid" style="margin-top:0;">
-          <div class="stat-item">Schedule Step <span id="ui-sched-step">-</span></div>
-          <div class="stat-item">Active LR <span id="ui-active-lr">-</span></div>
-          <div class="stat-item">Next Save <span id="ui-next-save">-</span></div>
-        </div>
-      </div>
-      <div id="live-eval" class="terminal-output" style="font-size:14px; color:var(--text-main);">Model not allocated. Proceed to ARCHITECTURE tab.</div>
-    </div>
+  <div class="badges">
+    <span class="badge b-teal">RWKV-v7</span>
+    <span class="badge b-green">Zero Dependencies</span>
+    <span class="badge b-purple">MIT License</span>
+    <span class="badge b-dim">Single HTML File</span>
+    <span class="badge b-dim">Offline Capable</span>
   </div>
-
-  <div class="screen" id="screen-align">
-    <div style="display:flex; flex-direction:column; gap:24px;">
-      <div class="panel">
-        <div class="panel-header">GROUP RELATIVE POLICY OPTIMIZATION</div>
-        <p style="font-size:13px; color:var(--text-muted); margin-bottom:24px; line-height:1.6;">
-          Executes critic-free reinforcement learning. Generates a cohort of responses, evaluates against the target reward condition, and updates parameters via Z-score normalized advantages with an approximate KL divergence constraint.
-        </p>
-        <div class="control-group">
-          <label>Prompt Condition</label>
-          <textarea id="grpo-prompt">User: Explain the sky.
-Assistant: Let me think step-by-step.</textarea>
-        </div>
-        <div class="control-group">
-          <label>Reward Type</label>
-          <select id="grpo-reward-type" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:6px 8px;border-radius:4px;width:100%;">
-            <option value="substring">Substring match</option>
-            <option value="regex">Regex match</option>
-            <option value="length">Length target</option>
-          </select>
-        </div>
-        <div class="control-group">
-          <label>Target / Pattern</label>
-          <input type="text" id="grpo-target" value="blue">
-        </div>
-        <div class="control-group">
-          <label>KL Coeff</label>
-          <input type="number" id="grpo-kl-coeff" value="0.1" min="0" max="1" step="0.01" style="width:100%;">
-        </div>
-        <div class="btn-row">
-          <button class="btn primary" id="btn-grpo-exec" onclick="executeGRPOEpoch()">EXECUTE GRPO EPOCH</button>
-        </div>
-      </div>
-      
-      <div class="panel" style="margin-top:auto;">
-        <div class="panel-header">REINFORCEMENT METRICS</div>
-        <div class="stat-grid">
-          <div class="stat-item">Epochs <span id="ui-grpo-epoch">0</span></div>
-          <div class="stat-item">Cohort Size <span>4</span></div>
-          <div class="stat-item">Avg Reward <span id="ui-grpo-reward">0.000</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel" style="display:flex; flex-direction:column;">
-      <div class="panel-header">COHORT TRAJECTORIES</div>
-      <div id="grpo-output" class="terminal-output" style="display:flex; flex-direction:column; gap:16px;">
-        <span style="opacity:0.5;">Awaiting GRPO initialization...</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="screen" id="screen-infer">
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:24px; flex:1; min-height:0;">
-      <div class="panel" style="display:flex; flex-direction:column;">
-        <div class="panel-header">DECODING SAMPLER</div>
-        <div class="control-group">
-          <label><span>Temperature</span> <input type="number" class="val-input" id="val-temp" min="0.01" max="2.0" step="0.01" value="0.80" onchange="document.getElementById('inf-temp').value=Math.round(this.value*100)"></label>
-          <input type="range" id="inf-temp" min="1" max="200" value="80" oninput="document.getElementById('val-temp').value=(this.value/100).toFixed(2)">
-        </div>
-        <div class="control-group">
-          <label><span>Top-P Nucleus</span> <input type="number" class="val-input" id="val-topp" min="0.01" max="1.0" step="0.01" value="0.90" onchange="document.getElementById('inf-topp').value=Math.round(this.value*100)"></label>
-          <input type="range" id="inf-topp" min="1" max="100" value="90" oninput="document.getElementById('val-topp').value=(this.value/100).toFixed(2)">
-        </div>
-        <div class="control-group">
-          <label><span>Max Output Tokens</span> <input type="number" class="val-input" id="val-maxt" min="10" max="1024" step="10" value="200" onchange="document.getElementById('inf-maxt').value=this.value"></label>
-          <input type="range" id="inf-maxt" min="10" max="1024" step="10" value="200" oninput="document.getElementById('val-maxt').value=this.value">
-        </div>
-        
-        <div class="control-group">
-          <label><span>Top-K</span> <input type="number" class="val-input" id="val-topk" min="0" max="200" step="1" value="0" onchange="document.getElementById('inf-topk').value=this.value"></label>
-          <input type="range" id="inf-topk" min="0" max="200" value="0" oninput="document.getElementById('val-topk').value=this.value">
-          <small style="opacity:0.5;">0 = disabled</small>
-        </div>
-        <div class="control-group">
-          <label><span>Repetition Penalty</span> <input type="number" class="val-input" id="val-rep-penalty" min="1.0" max="2.0" step="0.01" value="1.0" onchange="document.getElementById('inf-rep-penalty').value=Math.round(this.value*100)"></label>
-          <input type="range" id="inf-rep-penalty" min="100" max="200" value="100" oninput="document.getElementById('val-rep-penalty').value=(this.value/100).toFixed(2)">
-        </div>
-        <div class="control-group" style="margin-top:auto;">
-          <label>Context Sequence</label>
-          <textarea id="inf-prompt" style="height:120px;" placeholder="Input context sequence..."></textarea>
-        </div>
-        <div class="btn-row">
-          <button class="btn primary" id="btn-infer-run" onclick="startInference()">GENERATE</button>
-          <button class="btn danger" id="btn-infer-stop" style="flex: 0.3;" onclick="stopInference()" disabled>HALT</button>
-        </div>
-      </div>
-      
-      <div class="panel" style="display:flex; flex-direction:column;">
-        <div class="panel-header">RUNTIME OUTPUT</div>
-        <div id="inf-output" class="terminal-output" style="font-size:15px; color:var(--text-main);"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="screen" id="screen-io">
-    <div class="panel" style="max-width: 1200px; margin: 0 auto; width: 100%;">
-      <div class="panel-header">VIRTUAL MACHINE STATE PERSISTENCE</div>
-      <p style="font-size:14px; color:var(--text-muted); margin-bottom:32px; line-height:1.7;">
-        Master weights residing in Javascript Float32Arrays are serialized into binary formats. 
-        Local DB logic utilizes native ArrayBuffer storage for robustness, strictly eliminating Base64 call stack limits. 
-        Momentum buffers from Muon are strategically discarded to halve the storage footprint.
-      </p>
-      
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px;">
-        <div style="background:var(--bg-primary); border:1px solid var(--border); padding:32px 24px; border-radius:12px; text-align:center;">
-          <h3 style="color:var(--text-main); font-size:14px; font-family:var(--font-mono); margin-bottom:24px; letter-spacing:1px;">LOCAL INDEXED DB</h3>
-          <div class="btn-row" style="justify-content:center;">
-            <button class="btn" onclick="saveToIDB()">COMMIT TO DB</button>
-            <button class="btn primary" onclick="loadFromIDB()">HYDRATE FROM DB</button>
-          </div>
-        </div>
-        
-        <div style="background:var(--bg-primary); border:1px solid var(--border); padding:32px 24px; border-radius:12px; text-align:center;">
-          <h3 style="color:var(--text-main); font-size:14px; font-family:var(--font-mono); margin-bottom:8px; letter-spacing:1px;">EXTERNAL I/O (.pip / .json)</h3>
-          <div style="margin-bottom:16px;">
-            <label style="color:var(--text-muted); font-size:12px; font-weight:600; margin-right:12px;">
-              <input type="radio" name="export-fmt" value="pip" checked style="accent-color:var(--accent)"> .pip
-            </label>
-            <label style="color:var(--text-muted); font-size:12px; font-weight:600;">
-              <input type="radio" name="export-fmt" value="json" style="accent-color:var(--accent)"> .json
-            </label>
-          </div>
-          <div class="btn-row" style="justify-content:center;">
-            <button class="btn" onclick="exportModel()">SERIALIZE</button>
-            <button class="btn primary" onclick="document.getElementById('import-file').click()">LOAD</button>
-            <input type="file" id="import-file" accept=".pip,.json" style="display:none" onchange="importJSON(this)">
-          </div>
-        </div>
-
-        <div style="background:var(--bg-primary); border:1px solid var(--border); padding:32px 24px; border-radius:12px; text-align:center;">
-          <h3 style="color:var(--text-main); font-size:14px; font-family:var(--font-mono); margin-bottom:8px; letter-spacing:1px;">JUNTO NODE</h3>
-          <div style="margin-bottom:16px;">
-            <input type="text" id="junto-node-id" placeholder="Node ID (auto-generated)" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-main); font-family:var(--font-mono); font-size:13px; padding:10px; border-radius:8px; outline:none; margin-bottom:8px; box-sizing:border-box;">
-            <input type="text" id="junto-corpus-label" placeholder="Corpus label (e.g. 'naturalist-prose')" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-main); font-family:var(--font-mono); font-size:13px; padding:10px; border-radius:8px; outline:none; box-sizing:border-box;">
-          </div>
-          <div class="btn-row" style="justify-content:center;">
-            <button class="btn primary" onclick="JuntoNode.init(document.getElementById('junto-node-id').value, document.getElementById('junto-corpus-label').value)">JOIN SWARM</button>
-          </div>
-          <div style="margin-top:12px; font-size:11px; color:var(--text-muted); font-family:var(--font-mono);" id="junto-status">Inactive</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <footer>
-    <div class="footer-stat">V8 Context: <span class="sys-ok">Active</span></div>
-    <div class="footer-stat">Corpus Size: <span id="ft-corpus">0</span> b</div>
-    <div class="footer-stat">Tokens Map: <span id="ft-tok">0</span></div>
-    <div style="margin-left:auto;" class="footer-stat">
-      Heap Mem: <span id="ft-mem">0.0</span> MB
-      <div class="mem-gauge-wrapper"><div id="mem-gauge-fill"></div></div>
-    </div>
-  </footer>
 </div>
 
-<script>
-/**
- * HTMLNLM CORE RUNTIME - Debugged RWKV-v7 Version
- * Fixes applied:
- * - Fixed backward pass gradient flow in RWKVv7Block
- * - Fixed token shift mu parameter initialization
- * - Fixed state checkpoint copying in Trainer
- * - Added proper error handling in async functions
- * - Fixed layer dimension calculations for v7
- */
+<hr>
+
+<div class="section">
+  <div class="successor">
+    <div class="successor-icon">✦</div>
+    <div class="successor-body">
+      <h3>Successor: HTMLNLM Evangelion</h3>
+      <p>Evangelion extends HTMLNLM with omnimodal input (vision, audio, spatial), <a href="https://github.com/ConsciousNode/HTMLNLM-Evangelion">SheafMemory topological contradiction detection, BooleanPhaseDynamics, AutopoieticOptimizer self-correction, and RIFT Endospace visualization</a>. HTMLNLM remains the stable text-only runtime. Further ahead: EvaROSA (RWKV-8 + ROSA neurosymbolic inner monologue) is in active development.</p>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<div class="section" id="components">
+  <div class="section-label">Architecture</div>
+  <h2>What's inside</h2>
+  <div class="comp-grid">
+    <div class="comp-card">
+      <div class="comp-name">RWKV-v7 Backbone</div>
+      <div class="comp-desc">Linear-time recurrent architecture. O(1) inference memory. No KV cache, no quadratic attention. Runs efficiently on CPU.</div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-name">BitNet b1.58</div>
+      <div class="comp-desc">Ternary weight quantization {-1, 0, +1} via T-MAC lookup table microkernel. Float multiplications replaced with integer additions.</div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-name">OOMB Backward Pass</div>
+      <div class="comp-desc">Chunk-recurrent backprop with on-the-fly activation recomputation. Constant memory footprint regardless of sequence length.</div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-name">MuonOptimizer</div>
+      <div class="comp-desc">Quintic Newton-Schulz orthogonalization. Keeps weight matrices well-conditioned without expensive decompositions.</div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-name">GRPO Alignment</div>
+      <div class="comp-desc">Group Relative Policy Optimization. Critic-free RL alignment with Z-score normalized advantages and KL divergence constraint.</div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-name">BPE Tokenizer</div>
+      <div class="comp-desc">Byte Pair Encoding compiled in a WebWorker. Doesn't block the UI thread. Configurable vocab size.</div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-name">Pip Suite</div>
+      <div class="comp-desc">Companion tools: Junto orchestrator for multi-instance coordination, multi-pip chat, and Pip's Room single-instance interface.</div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-name">Live Telemetry</div>
+      <div class="comp-desc">EMA-smoothed loss curve, ternary weight distribution histogram, tok/sec throughput. Watch training in real time.</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<div class="section" id="stack">
+  <div class="section-label">ConsciousNode SoftWorks</div>
+  <h2>The full stack</h2>
+  <table class="stack-table">
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Description</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>HTMLNLM</td>
+        <td>Text-only RWKV-v7 runtime — pretraining + GRPO alignment in the browser</td>
+        <td><span class="status-live">✅ stable</span></td>
+      </tr>
+      <tr>
+        <td><a href="https://github.com/ConsciousNode/HTMLNLM-Evangelion">HTMLNLM Evangelion</a></td>
+        <td>Omnimodal: vision, audio, spatial + SheafMemory + AutopoieticOptimizer + RIFT Endospace</td>
+        <td><span class="status-live">✅ phase 6</span></td>
+      </tr>
+      <tr>
+        <td><a href="https://github.com/ConsciousNode/OmniVocal">OmniVocal</a></td>
+        <td>Browser-native neural TTS with .pop2 portable voice identity</td>
+        <td><span class="status-live">✅ live</span></td>
+      </tr>
+      <tr>
+        <td><a href="https://consciousnode.github.io/RAG-Time/">RAG-Time</a></td>
+        <td>Browser-native retrieval-augmented generation</td>
+        <td><span class="status-live">✅ live</span></td>
+      </tr>
+      <tr>
+        <td>Brymar College</td>
+        <td>RWKV-v7 fine-tuning with Fristonian active inference training objective</td>
+        <td><span class="status-live">✅ v3</span></td>
+      </tr>
+      <tr>
+        <td>EvaROSA</td>
+        <td>RWKV-8 + ROSA neurosymbolic inner monologue grounded by SheafMemory topology</td>
+        <td><span class="status-dev">🔧 in development</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<hr>
+
+<div class="section" id="credits">
+  <div class="section-label">Built by</div>
+  <h2>ConsciousNode SoftWorks</h2>
+  <div class="credits-grid">
+    <div class="credit-card">
+      <div class="credit-name">Kham</div>
+      <div class="credit-role">Architecture, constraint engineering, xinu philosophy. The browser is bare metal.</div>
+    </div>
+    <div class="credit-card">
+      <div class="credit-name">Kehai Interim</div>
+      <div class="credit-role">Full RWKV-v7 BPTT derivation, BitLinear/TMAC kernel, mathematical foundation throughout.</div>
+    </div>
+    <div class="credit-card">
+      <div class="credit-name">Ed Interim</div>
+      <div class="credit-role">MuonOptimizer, implementation, integration, Pip Suite.</div>
+    </div>
+  </div>
+  <p style="color:var(--dim);font-size:12px;font-family:'Space Mono',monospace;margin-top:20px;">computational folk art for the browser age</p>
+</div>
+
+<footer>
+  <div>HTMLNLM · v1.0 · MIT · ConsciousNode SoftWorks</div>
+  <div>
+    <a href="https://github.com/ConsciousNode/HTMLNLM">GitHub</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/ConsciousNode/HTMLNLM-Evangelion">Evangelion →</a>
+  </div>
+</footer>
 
-const CONFIG = {
-  oomb_chunk_size: 128,
-  muon_wd: 0.01,
-  muon_momentum: 0.95,
-  grad_accum_steps: 4,
-  grpo_g_size: 4,
-  kl_target: 0.02,
-  ema_loss: 7.5
-};
-
-const yieldToMain = () => new Promise(r => setTimeout(r, 0));
-
-function sysLog(msg, type = 'info') {
-  const el = document.getElementById('sys-logs');
-  const cssClass = type === 'error' ? 'sys-err' : type === 'warn' ? 'sys-warn' : type === 'ok' ? 'sys-ok' : '';
-  const tag = type.toUpperCase().padStart(5, ' ');
-  el.innerHTML += `<div><span style="opacity:0.6">[${new Date().toISOString().substring(11, 19)}]</span> <span class="${cssClass}">[${tag}] ${msg}</span></div>`;
-  el.scrollTop = el.scrollHeight;
-}
-
-setInterval(() => {
-  if (performance.memory) {
-    const mb = performance.memory.usedJSHeapSize / 1048576;
-    document.getElementById('ft-mem').textContent = mb.toFixed(1);
-    document.getElementById('mem-gauge-fill').style.width = Math.min(100, mb / 40.96) + '%'; 
-  }
-}, 1000);
-
-function updateOptimizerUI(optType) {
-  const slider = document.getElementById('cfg-lr');
-  const input = document.getElementById('val-lr');
-  const label = document.getElementById('lr-label');
-  if (optType === 'adam') {
-    slider.min = 1; slider.max = 30; slider.step = 1;
-    if (parseFloat(slider.value) > 30) slider.value = 10;
-    label.textContent = 'Learning Rate (AdamW)';
-    input.min = 0.001; input.max = 0.03; input.step = 0.001;
-  } else {
-    slider.min = 1; slider.max = 100; slider.step = 1;
-    label.textContent = 'Learning Rate (Muon)';
-    input.min = 0.001; input.max = 0.1; input.step = 0.001;
-  }
-  input.value = (slider.value / 1000).toFixed(3);
-}
-
-function syncLRFromInput(val) {
-  const v = parseFloat(val);
-  if (isNaN(v)) return;
-  const slider = document.getElementById('cfg-lr');
-  slider.value = Math.round(v * 1000);
-}
-
-function updateScheduleUI(type) {
-  const p = document.getElementById('sched-params');
-  const desc = document.getElementById('sched-desc');
-  p.style.display = type === 'manual' ? 'none' : 'block';
-  document.getElementById('sp-warmup').style.display = type === 'cosine' ? 'block' : 'none';
-  document.getElementById('sp-decay').style.display = (type === 'step' || type === 'exp') ? 'block' : 'none';
-  document.getElementById('sp-stepsize').style.display = type === 'step' ? 'block' : 'none';
-  document.getElementById('sp-total').style.display = (type === 'cosine' || type === 'exp') ? 'block' : 'none';
-  if (type === 'cosine') { desc.textContent = 'Linear warmup -> cosine anneal to min LR.'; document.getElementById('decay-label').textContent = 'Decay Factor'; }
-  else if (type === 'step') { desc.textContent = 'Multiply LR by decay factor every N steps.'; document.getElementById('decay-label').textContent = 'Decay Factor'; }
-  else if (type === 'exp') { desc.textContent = 'LR * decay^step. Smooth continuous decay.'; document.getElementById('decay-label').textContent = 'Decay Rate'; }
-}
-
-function computeScheduledLR(baseLR, step) {
-  const type = document.getElementById('lr-schedule').value;
-  if (type === 'manual') return baseLR;
-  const minLR = parseFloat(document.getElementById('sched-minlr').value) || 1e-4;
-  if (type === 'cosine') {
-    const warmup = parseInt(document.getElementById('sched-warmup').value) || 100;
-    const total = parseInt(document.getElementById('sched-total').value) || 2000;
-    if (step < warmup) return baseLR * (step / Math.max(1, warmup));
-    const prog = Math.min(1, (step - warmup) / Math.max(1, total - warmup));
-    return minLR + 0.5 * (baseLR - minLR) * (1 + Math.cos(Math.PI * prog));
-  }
-  if (type === 'step') {
-    const factor = parseFloat(document.getElementById('sched-decay').value) || 0.5;
-    const stepSize = parseInt(document.getElementById('sched-stepsize').value) || 500;
-    return Math.max(minLR, baseLR * Math.pow(factor, Math.floor(step / stepSize)));
-  }
-  if (type === 'exp') {
-    const rate = parseFloat(document.getElementById('sched-decay').value) || 0.001;
-    const total = parseInt(document.getElementById('sched-total').value) || 2000;
-    return Math.max(minLR, baseLR * Math.exp(-rate * step));
-  }
-  return baseLR;
-}
-
-async function exportModel() {
-  if(!App.model) return sysLog('No state to export.', 'error');
-  const fmt = document.querySelector('input[name="export-fmt"]:checked')?.value || 'pip';
-  sysLog(`Serializing to .${fmt}...`, 'info');
-
-  const state = {
-    version: 'rwkv7',
-    cfg: App.model.cfg,
-    tok: { vocab: App.tokenizer.vocab, merges: App.tokenizer.merges, size: App.tokenizer.size },
-    weights: { layers: [] }
-  };
-
-  state.weights.emb = await bufferToBase64Async(App.model.embedding.buffer);
-  const layers = App.model.getLinearLayers();
-  for(const l of layers) state.weights.layers.push(await bufferToBase64Async(l.weight.buffer));
-  // Save mu (token-shift) parameters
-  state.weights.mu = [];
-  for(const b of App.model.blocks) {
-    if (b.mu_r) {
-      state.weights.mu.push({
-        r:     await bufferToBase64Async(b.mu_r.buffer),
-        k:     await bufferToBase64Async(b.mu_k.buffer),
-        v:     await bufferToBase64Async(b.mu_v.buffer),
-        kappa: await bufferToBase64Async(b.mu_kappa.buffer),
-        a:     await bufferToBase64Async(b.mu_a.buffer),
-        w:     await bufferToBase64Async(b.mu_w.buffer),
-      });
-    }
-  }
-
-  const blob = new Blob([JSON.stringify(state)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `htmlnlm_model.${fmt}`;
-  a.click();
-  URL.revokeObjectURL(url);
-  sysLog(`Model exported as .${fmt}.`, 'ok');
-}
-
-class TMAC {
-  static UNPACK_TABLE = new Int8Array(81 * 4);
-  
-  static initTable() {
-    for(let i = 0; i < 81; i++) {
-        let rem = i;
-        TMAC.UNPACK_TABLE[i * 4] = (rem % 3) - 1; rem = Math.floor(rem / 3);
-        TMAC.UNPACK_TABLE[i * 4 + 1] = (rem % 3) - 1; rem = Math.floor(rem / 3);
-        TMAC.UNPACK_TABLE[i * 4 + 2] = (rem % 3) - 1; rem = Math.floor(rem / 3);
-        TMAC.UNPACK_TABLE[i * 4 + 3] = (rem % 3) - 1;
-    }
-  }
-
-  static packTernary(t0, t1, t2, t3) {
-    return (t0 + 1) + 3 * (t1 + 1) + 9 * (t2 + 1) + 27 * (t3 + 1);
-  }
-
-  static quantizeWeights(masterWeights, packedOut) {
-    const n = masterWeights.length;
-    const blocks = Math.ceil(n / 4);
-    
-    let sumAbs = 0;
-    for (let i = 0; i < n; i++) sumAbs += Math.abs(masterWeights[i]);
-    const gamma = (sumAbs / n) || 1e-8;
-    const invGamma = 1.0 / gamma;
-    
-    for (let b = 0; b < blocks; b++) {
-      const base = b * 4;
-      const t0 = base < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base] * invGamma))) : 0;
-      const t1 = base + 1 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 1] * invGamma))) : 0;
-      const t2 = base + 2 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 2] * invGamma))) : 0;
-      const t3 = base + 3 < n ? Math.max(-1, Math.min(1, Math.round(masterWeights[base + 3] * invGamma))) : 0;
-      packedOut[b] = TMAC.packTernary(t0, t1, t2, t3);
-    }
-    return gamma;
-  }
-
-  static execute(packedWeights, input, outDim, inDim, gamma, outputArr, scratchLut) {
-    const blocksPerRow = Math.ceil(inDim / 4);
-    
-    for (let b = 0; b < blocksPerRow; b++) {
-      const base = b * 4;
-      const v0 = base < inDim ? input[base] : 0;
-      const v1 = base + 1 < inDim ? input[base + 1] : 0;
-      const v2 = base + 2 < inDim ? input[base + 2] : 0;
-      const v3 = base + 3 < inDim ? input[base + 3] : 0;
-
-      const lutOffset = b * 81;
-      for (let i = 0; i < 81; i++) {
-        const uBase = i * 4;
-        scratchLut[lutOffset + i] = 
-          (TMAC.UNPACK_TABLE[uBase] * v0) + 
-          (TMAC.UNPACK_TABLE[uBase + 1] * v1) + 
-          (TMAC.UNPACK_TABLE[uBase + 2] * v2) + 
-          (TMAC.UNPACK_TABLE[uBase + 3] * v3);
-      }
-    }
-    
-    for (let o = 0; o < outDim; o++) {
-      let acc = 0;
-      const rowBase = o * blocksPerRow;
-      for (let b = 0; b < blocksPerRow; b++) {
-        acc += scratchLut[b * 81 + packedWeights[rowBase + b]];
-      }
-      outputArr[o] = acc * gamma;
-    }
-  }
-}
-TMAC.initTable();
-
-class BitLinear {
-  constructor(inDim, outDim) {
-    this.inDim = inDim; 
-    this.outDim = outDim;
-    this.weight = new Float32Array(outDim * inDim);
-    this.grad = new Float32Array(outDim * inDim);
-    this.momentum = new Float32Array(outDim * inDim);
-    
-    this.packed = new Uint8Array(Math.ceil((outDim * inDim) / 4));
-    this.gamma = 1.0;
-    this.dirty = true;
-    
-    this.lutScratch = new Float32Array(Math.ceil(inDim / 4) * 81);
-    
-    const scale = Math.sqrt(3.0 / inDim);
-    for (let i = 0; i < this.weight.length; i++) {
-      this.weight[i] = (Math.random() * 2 - 1) * scale;
-    }
-  }
-
-  pack() {
-    if (this.dirty) {
-      this.gamma = TMAC.quantizeWeights(this.weight, this.packed);
-      this.dirty = false;
-    }
-  }
-
-  forward(x) {
-    this.pack();
-    const out = new Float32Array(this.outDim);
-    TMAC.execute(this.packed, x, this.outDim, this.inDim, this.gamma, out, this.lutScratch);
-    return out;
-  }
-
-  backward(gradOut, x) {
-    for (let o = 0; o < this.outDim; o++) {
-      const rowOffset = o * this.inDim;
-      const go = gradOut[o];
-      for (let i = 0; i < this.inDim; i++) {
-        this.grad[rowOffset + i] += go * x[i];
-      }
-    }
-    
-    const gradIn = new Float32Array(this.inDim);
-    for (let i = 0; i < this.inDim; i++) {
-      let acc = 0;
-      for (let o = 0; o < this.outDim; o++) {
-        acc += this.weight[o * this.inDim + i] * gradOut[o];
-      }
-      gradIn[i] = acc;
-    }
-    return gradIn;
-  }
-
-  zeroGrad() { this.grad.fill(0); }
-  markDirty() { this.dirty = true; }
-}
-
-class LayerNorm {
-  constructor(dim) {
-    this.dim = dim;
-    this.weight = new Float32Array(dim).fill(1.0);
-    this.bias = new Float32Array(dim).fill(0.0);
-    this.grad_w = new Float32Array(dim);
-    this.grad_b = new Float32Array(dim);
-  }
-  
-  forward(x) {
-    let mean = 0, v = 0;
-    for (let i = 0; i < this.dim; i++) mean += x[i];
-    mean /= this.dim;
-    for (let i = 0; i < this.dim; i++) v += (x[i] - mean) ** 2;
-    
-    const rstd = 1.0 / Math.sqrt((v / this.dim) + 1e-5);
-    const out = new Float32Array(this.dim);
-    
-    for (let i = 0; i < this.dim; i++) {
-      out[i] = ((x[i] - mean) * rstd) * this.weight[i] + this.bias[i];
-    }
-    return { out, cache: { x, mean, rstd } };
-  }
-  
-  backward(gradOut, cache) {
-    if (!cache || !cache.x) return new Float32Array(this.dim);
-    const { x, mean, rstd } = cache;
-    const D = this.dim;
-    let sumIn = 0, sumDot = 0;
-    const dxNorm = new Float32Array(D);
-    
-    for (let i = 0; i < D; i++) {
-      const norm_x = (x[i] - mean) * rstd;
-      this.grad_w[i] += gradOut[i] * norm_x;
-      this.grad_b[i] += gradOut[i];
-      
-      dxNorm[i] = gradOut[i] * this.weight[i];
-      sumIn += dxNorm[i];
-      sumDot += dxNorm[i] * norm_x;
-    }
-    
-    const gradIn = new Float32Array(D);
-    for (let i = 0; i < D; i++) {
-      const norm_x = (x[i] - mean) * rstd;
-      gradIn[i] = rstd * (dxNorm[i] - (sumIn + norm_x * sumDot) / D);
-    }
-    return gradIn;
-  }
-  
-  zeroGrad() { this.grad_w.fill(0); this.grad_b.fill(0); }
-  
-  step(lr) {
-    for(let i=0; i<this.dim; i++){
-      this.weight[i] -= lr * this.grad_w[i];
-      this.bias[i] -= lr * this.grad_b[i];
-    }
-  }
-}
-
-class AdamOptimizer {
-  constructor(lr, beta1=0.9, beta2=0.999, wd=0.01) {
-    this.lr = lr; this.beta1 = beta1; this.beta2 = beta2; this.wd = wd;
-    this.t = 0; this._m = {}; this._v = {};
-  }
-  
-  async step(model) {
-    this.t++;
-    const layers = model.getLinearLayers();
-    const bc1 = 1 - Math.pow(this.beta1, this.t);
-    const bc2 = 1 - Math.pow(this.beta2, this.t);
-    const lrT = this.lr * Math.sqrt(bc2) / bc1;
-    
-    for (let li = 0; li < layers.length; li++) {
-      const layer = layers[li];
-      const len = layer.weight.length;
-      if (!this._m[li]) {
-        this._m[li] = new Float32Array(len);
-        this._v[li] = new Float32Array(len);
-      }
-      const m = this._m[li], v = this._v[li];
-      
-      for (let i = 0; i < len; i++) {
-        const g = layer.grad[i] / CONFIG.grad_accum_steps;
-        m[i] = this.beta1 * m[i] + (1 - this.beta1) * g;
-        v[i] = this.beta2 * v[i] + (1 - this.beta2) * g * g;
-        layer.weight[i] = layer.weight[i] * (1 - this.lr * this.wd) 
-                          - lrT * m[i] / (Math.sqrt(v[i]) + 1e-8);
-      }
-      layer.markDirty();
-    }
-    
-    const ln_lr = this.lr * 0.1;
-    model.ln_in.step(ln_lr);
-    model.ln_out.step(ln_lr);
-    for(const b of model.blocks) { b.ln1.step(ln_lr); b.ln2.step(ln_lr); }
-    // Update mu (token-shift) parameters with simple SGD at small lr
-    const mu_lr = this.lr * 0.05;
-    for(const b of model.blocks) {
-      if (b.muStep) b.muStep(mu_lr);
-    }
-    await yieldToMain();
-  }
-}
-
-class MuonOptimizer {
-  constructor(lr) { 
-    this.lr = lr; 
-    this._buffers = {}; 
-  }
-
-  _getBuffers(cols, rows) {
-    const key = `${cols}_${rows}`;
-    if (!this._buffers[key]) {
-      const n = cols * cols;
-      this._buffers[key] = {
-        S: new Float32Array(n),
-        S2: new Float32Array(n),
-        Poly: new Float32Array(n),
-        Gc: new Float32Array(rows * cols),
-        Gnew: new Float32Array(rows * cols)
-      };
-    }
-    return this._buffers[key];
-  }
-
-  async newtonSchulz5(G, rows, cols) {
-    const n = rows * cols;
-    let norm = 0;
-    for(let i=0; i<n; i++) norm += G[i]*G[i];
-    norm = Math.sqrt(norm) + 1e-12;
-    
-    const bufs = this._getBuffers(cols, rows);
-    const { S, S2, Poly, Gc, Gnew } = bufs;
-    
-    for(let i=0; i<n; i++) Gc[i] = G[i] / norm;
-
-    const a = 3.4445, b = -4.7750, c = 2.0315;
-
-    for (let iter = 0; iter < 5; iter++) {
-      for (let x = 0; x < cols; x++) {
-        for (let y = 0; y < cols; y++) {
-          let dot = 0;
-          for (let r = 0; r < rows; r++) dot += Gc[r * cols + x] * Gc[r * cols + y];
-          S[x * cols + y] = dot;
-        }
-      }
-      await yieldToMain();
-
-      for (let x = 0; x < cols; x++) {
-        for (let y = 0; y < cols; y++) {
-          let dot = 0;
-          for (let k = 0; k < cols; k++) dot += S[x * cols + k] * S[k * cols + y];
-          S2[x * cols + y] = dot;
-        }
-      }
-      
-      for (let x = 0; x < cols; x++) {
-        for (let y = 0; y < cols; y++) {
-          Poly[x * cols + y] = (x === y ? a : 0) + b * S[x * cols + y] + c * S2[x * cols + y];
-        }
-      }
-      
-      for (let r = 0; r < rows; r++) {
-        for (let y = 0; y < cols; y++) {
-          let acc = 0;
-          for (let x = 0; x < cols; x++) acc += Gc[r * cols + x] * Poly[x * cols + y];
-          Gnew[r * cols + y] = acc;
-        }
-      }
-      for(let i=0; i<n; i++) Gc[i] = Gnew[i];
-    }
-    return Gc;
-  }
-
-  async step(model) {
-    const layers = model.getLinearLayers();
-    for (const layer of layers) {
-      const len = layer.weight.length;
-      for (let i = 0; i < len; i++) {
-        layer.grad[i] /= CONFIG.grad_accum_steps;
-        layer.momentum[i] = CONFIG.muon_momentum * layer.momentum[i] + layer.grad[i];
-      }
-      
-      const orth = await this.newtonSchulz5(layer.momentum, layer.outDim, layer.inDim);
-      
-      for (let i = 0; i < len; i++) {
-        layer.weight[i] = layer.weight[i] * (1 - this.lr * CONFIG.muon_wd) - this.lr * orth[i];
-      }
-      layer.markDirty();
-      await yieldToMain();
-    }
-    
-    const ln_lr = this.lr * 0.1;
-    model.ln_in.step(ln_lr);
-    model.ln_out.step(ln_lr);
-    for(const b of model.blocks) { b.ln1.step(ln_lr); b.ln2.step(ln_lr); }
-    // Update mu (token-shift) parameters with simple SGD at small lr
-    const mu_lr = this.lr * 0.05;
-    for(const b of model.blocks) {
-      if (b.muStep) b.muStep(mu_lr);
-    }
-  }
-}
-
-class Trainer {
-  constructor(model, optimizer) {
-    this.model = model;
-    this.opt = optimizer;
-    this.isRunning = false;
-    this.isPaused = false;
-    this.globalStep = 0;
-  }
-
-  computeLossAndGrad(logits, targetId) {
-    let max = -Infinity;
-    for(let i=0; i<logits.length; i++) if(logits[i] > max) max = logits[i];
-    let sum = 0;
-    const probs = new Float32Array(logits.length);
-    for(let i=0; i<logits.length; i++) {
-      probs[i] = Math.exp(logits[i] - max);
-      sum += probs[i];
-    }
-    for(let i=0; i<logits.length; i++) probs[i] /= sum;
-    
-    const loss = -Math.log(probs[targetId] + 1e-8);
-    probs[targetId] -= 1.0; 
-    return { loss, grad: probs };
-  }
-
-  async trainSequence(tokens) {
-    const len = tokens.length;
-    if(len < 2) return 0;
-
-    let state = this.model.getEmptyState();
-    const checkpoints = [];
-    const chunkSize = parseInt(document.getElementById('cfg-ctx').value);
-    
-    for(let start = 0; start < len - 1; start += chunkSize) {
-      const stateCopy = state.map(s => ({
-        prevX: s.prevX ? new Float32Array(s.prevX) : null,
-        prevX2: s.prevX2 ? new Float32Array(s.prevX2) : null,
-        num: s.num ? new Float32Array(s.num) : null,
-        den: s.den ? new Float32Array(s.den) : null
-      }));
-      checkpoints.push({ start, state: stateCopy });
-      
-      const end = Math.min(start + chunkSize, len - 1);
-      for(let t = start; t < end; t++) {
-        state = this.model.forward(tokens[t], state).state;
-      }
-      await yieldToMain();
-    }
-
-    state = null; 
-    let totalLoss = 0;
-
-    for(let i = checkpoints.length - 1; i >= 0; i--) {
-      const { start, state: rState } = checkpoints[i];
-      const end = Math.min(start + chunkSize, len - 1);
-      
-      const acts = [];
-      let currentState = rState;
-      for(let t = start; t < end; t++) {
-        const res = this.model.forward(tokens[t], currentState);
-        acts.push({ caches: res.caches, logits: res.logits });
-        currentState = res.state;
-      }
-
-      // Initialize state gradients for BPTT (zero at sequence end)
-      let stateGrads = this.model.blocks.map(() => ({
-        num: new Float32Array(this.model.cfg.dim),
-        den: new Float32Array(this.model.cfg.dim)
-      }));
-
-      for(let j = acts.length - 1; j >= 0; j--) {
-        const targetId = tokens[start + j + 1];
-        const { loss, grad } = this.computeLossAndGrad(acts[j].logits, targetId);
-        totalLoss += loss;
-        const result = this.model.backward(grad, acts[j].caches, stateGrads);
-        stateGrads = result.gradStatesOut;  // BPTT: pass state grads to previous timestep
-      }
-      await yieldToMain();
-    }
-
-    return totalLoss / (len - 1);
-  }
-}
-
-const bpeScript = `
-self.onmessage = async function(e) {
-  try {
-    const { text, targetVocab } = e.data;
-    const CAP = 8000000;
-    const truncated = text.length > CAP;
-    const bytes = new TextEncoder().encode(truncated ? text.substring(0, CAP) : text);
-    if (truncated) self.postMessage({ type: 'progress', pct: 0, warn: 'Corpus truncated to 8MB.' });
-    let tokens = new Uint32Array(bytes.length);
-    for(let i=0; i<bytes.length; i++) tokens[i] = bytes[i];
-    
-    const vocab = {}; const merges = [];
-    for(let i=0; i<256; i++) vocab[i] = String.fromCharCode(i);
-    let nextId = 256;
-
-    for(let m = 0; m < (targetVocab - 256); m++) {
-      if (tokens.length < 2) break;
-      
-      const freq = new Map();
-      for(let i=0; i<tokens.length-1; i++) {
-        const key = tokens[i] * 65536 + tokens[i+1];
-        freq.set(key, (freq.get(key) || 0) + 1);
-      }
-      
-      let bestKey = -1, maxCount = 0;
-      for(const [k, c] of freq) { if(c > maxCount) { maxCount = c; bestKey = k; } }
-      if (maxCount < 2) break;
-      
-      const left = Math.floor(bestKey / 65536), right = bestKey % 65536;
-      const newId = nextId++;
-      vocab[newId] = (vocab[left] || '') + (vocab[right] || '');
-      merges.push([bestKey, newId]);
-      
-      const nt = new Uint32Array(tokens.length);
-      let j=0, i=0;
-      while(i < tokens.length) {
-        if(i < tokens.length-1 && tokens[i] === left && tokens[i+1] === right) {
-          nt[j++] = newId; i += 2;
-        } else {
-          nt[j++] = tokens[i++];
-        }
-      }
-      tokens = nt.slice(0, j);
-      
-      if(m % 50 === 0) {
-        self.postMessage({ type: 'progress', pct: m / (targetVocab - 256) });
-        await new Promise(r => setTimeout(r, 0));
-      }
-    }
-    
-    self.postMessage({ type: 'done', vocab, merges, actualVocab: nextId });
-  } catch(err) {
-    self.postMessage({ type: 'error', msg: err.message });
-  }
-};
-`;
-
-class NanoTokenizer {
-  constructor() { this.trained = false; }
-  
-  async train(text, vocabSize) {
-    return new Promise((resolve, reject) => {
-      const blob = new Blob([bpeScript], { type: 'application/javascript' });
-      const worker = new Worker(URL.createObjectURL(blob));
-      
-      worker.onmessage = (e) => {
-        if(e.data.type === 'progress') {
-          if(e.data.warn) sysLog(e.data.warn, 'warn');
-          sysLog(`BPE Compiling... ${(e.data.pct*100).toFixed(0)}%`);
-        }
-        else if(e.data.type === 'error') reject(e.data.msg);
-        else if(e.data.type === 'done') {
-          this.vocab = e.data.vocab;
-          this.merges = e.data.merges;
-          this.size = e.data.actualVocab;
-          this.trained = true;
-          worker.terminate();
-          resolve();
-        }
-      };
-      worker.postMessage({ text, targetVocab: vocabSize });
-    });
-  }
-
-  encode(text) {
-    if(!this.trained) return [];
-    let tokens = Array.from(new TextEncoder().encode(text));
-    const mergeMap = new Map(this.merges);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      const res = [];
-      for (let i = 0; i < tokens.length; i++) {
-        if (i < tokens.length - 1) {
-          const key = tokens[i] * 65536 + tokens[i+1];
-          if (mergeMap.has(key)) {
-            res.push(mergeMap.get(key));
-            i++;
-            changed = true;
-            continue;
-          }
-        }
-        res.push(tokens[i]);
-      }
-      tokens = res;
-    }
-    return tokens;
-  }
-
-  decode(ids) {
-    const vocabMap = new Map(Object.entries(this.vocab).map(([k,v])=>[parseInt(k),v]));
-    return ids.map(id => vocabMap.get(id) || '').join('');
-  }
-}
-
-function sampleLogits(logits, temp, topP) {
-  if (temp <= 0.01) {
-    let max = -Infinity, best = 0;
-    for(let i=0; i<logits.length; i++) { if(logits[i]>max){ max=logits[i]; best=i; } }
-    return best;
-  }
-  
-  const scaled = new Float32Array(logits.length);
-  let max = -Infinity;
-  for(let i=0; i<logits.length; i++) {
-    scaled[i] = logits[i] / temp;
-    if(scaled[i] > max) max = scaled[i];
-  }
-  const probs = new Float32Array(logits.length);
-  let sum = 0;
-  for(let i=0; i<logits.length; i++) {
-    probs[i] = Math.exp(scaled[i] - max);
-    sum += probs[i];
-  }
-  for(let i=0; i<logits.length; i++) probs[i] /= sum;
-
-  if (topP < 1.0) {
-    const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a,b) => b.p - a.p);
-    let cum = 0, newSum = 0;
-    const filtered = new Float32Array(logits.length);
-    for(let item of sorted) {
-      filtered[item.i] = item.p;
-      newSum += item.p;
-      cum += item.p;
-      if(cum > topP) break;
-    }
-    for(let i=0; i<logits.length; i++) probs[i] = filtered[i] / (newSum || 1);
-  }
-
-  const r = Math.random();
-  let acc = 0;
-  for(let i=0; i<logits.length; i++) {
-    if(probs[i] > 0) {
-      acc += probs[i];
-      if(r <= acc) return i;
-    }
-  }
-  return 0;
-}
-
-function sampleLogitsExtended(logits, temp, topP, topK, repPenalty, recentTokens) {
-  // Apply repetition penalty
-  const penalized = new Float32Array(logits);
-  if (repPenalty > 1.0 && recentTokens && recentTokens.length > 0) {
-    const seen = new Set(recentTokens.slice(-64));
-    for (const id of seen) {
-      if (id < penalized.length) {
-        penalized[id] = penalized[id] < 0
-          ? penalized[id] * repPenalty
-          : penalized[id] / repPenalty;
-      }
-    }
-  }
-
-  if (temp <= 0.01) {
-    let max = -Infinity, best = 0;
-    for (let i = 0; i < penalized.length; i++) { if (penalized[i] > max) { max = penalized[i]; best = i; } }
-    return best;
-  }
-
-  let max = -Infinity;
-  const scaled = new Float32Array(penalized.length);
-  for (let i = 0; i < penalized.length; i++) { scaled[i] = penalized[i] / temp; if (scaled[i] > max) max = scaled[i]; }
-  const probs = new Float32Array(penalized.length);
-  let sum = 0;
-  for (let i = 0; i < scaled.length; i++) { probs[i] = Math.exp(scaled[i] - max); sum += probs[i]; }
-  for (let i = 0; i < probs.length; i++) probs[i] /= sum;
-
-  // Top-K
-  if (topK > 0) {
-    const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a, b) => b.p - a.p);
-    const keep = new Set(sorted.slice(0, topK).map(x => x.i));
-    let newSum = 0;
-    for (let i = 0; i < probs.length; i++) { if (!keep.has(i)) probs[i] = 0; else newSum += probs[i]; }
-    for (let i = 0; i < probs.length; i++) probs[i] /= (newSum || 1);
-  }
-
-  // Top-P
-  if (topP < 1.0) {
-    const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a, b) => b.p - a.p);
-    let cum = 0, newSum = 0;
-    const filtered = new Float32Array(probs.length);
-    for (const item of sorted) {
-      filtered[item.i] = item.p;
-      newSum += item.p;
-      cum += item.p;
-      if (cum > topP) break;
-    }
-    for (let i = 0; i < probs.length; i++) probs[i] = filtered[i] / (newSum || 1);
-  }
-
-  const r = Math.random();
-  let acc = 0;
-  for (let i = 0; i < probs.length; i++) {
-    if (probs[i] > 0) { acc += probs[i]; if (r <= acc) return i; }
-  }
-  return 0;
-}
-
-class RWKVv6Block {
-  constructor(dim, dimFFN) {
-    this.dim = dim;
-    this.ln1 = new LayerNorm(dim);
-    this.ln2 = new LayerNorm(dim);
-
-    this.W_x_rx = new BitLinear(dim, dim);
-    this.W_x_kx = new BitLinear(dim, dim);
-    this.W_x_vx = new BitLinear(dim, dim);
-    this.W_x_w  = new BitLinear(dim, dim);
-    this.Wr = new BitLinear(dim, dim);
-    this.Wk = new BitLinear(dim, dim);
-    this.Wv = new BitLinear(dim, dim);
-    this.Wo = new BitLinear(dim, dim);
-
-    this.W_x_rx2 = new BitLinear(dim, dim);
-    this.W_x_kx2 = new BitLinear(dim, dim);
-    this.Wr2 = new BitLinear(dim, dim);
-    this.Wk2 = new BitLinear(dim, dimFFN);
-    this.Wv2 = new BitLinear(dimFFN, dim);
-  }
-
-  static sigmoid(x) {
-    const o = new Float32Array(x.length);
-    for (let i=0; i<x.length; i++) o[i] = 1 / (1 + Math.exp(-Math.max(-40, Math.min(40, x[i]))));
-    return o;
-  }
-
-  ddlerp(x, prevX, mu_proj) {
-    const mu = RWKVv6Block.sigmoid(mu_proj);
-    const o = new Float32Array(this.dim);
-    for (let i = 0; i < this.dim; i++) o[i] = x[i] * (1 - mu[i]) + prevX[i] * mu[i];
-    return { out: o, mu };
-  }
-
-  forward(x, state) {
-    const dim = this.dim;
-    const ln1Res = this.ln1.forward(x);
-    const x_ln = ln1Res.out;
-    const prevX = state.prevX || new Float32Array(dim);
-
-    const rxRes = this.ddlerp(x_ln, prevX, this.W_x_rx.forward(x_ln));
-    const kxRes = this.ddlerp(x_ln, prevX, this.W_x_kx.forward(x_ln));
-    const vxRes = this.ddlerp(x_ln, prevX, this.W_x_vx.forward(x_ln));
-    const rx = rxRes.out, kx = kxRes.out, vx = vxRes.out;
-
-    const r = RWKVv6Block.sigmoid(this.Wr.forward(rx));
-    const k = this.Wk.forward(kx);
-    const v = this.Wv.forward(vx);
-    const w_proj = this.W_x_w.forward(x_ln);
-
-    const num = state.num || new Float32Array(dim);
-    const den = state.den || new Float32Array(dim).fill(1);
-    const wkv = new Float32Array(dim);
-
-    for (let i = 0; i < dim; i++) {
-      const w_clamped = Math.max(-5, Math.min(5, w_proj[i] - 1.0));
-      const decay = Math.exp(-Math.exp(w_clamped));
-      const expK = Math.exp(Math.max(-30, Math.min(30, k[i])));
-      num[i] = decay * num[i] + expK * v[i];
-      den[i] = decay * den[i] + expK;
-      wkv[i] = num[i] / (Math.abs(den[i]) + 1e-8);
-    }
-
-    const gated = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gated[i] = r[i] * wkv[i];
-
-    const tmix_out = this.Wo.forward(gated);
-    const h = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) h[i] = x[i] + tmix_out[i];
-
-    const ln2Res = this.ln2.forward(h);
-    const h_ln = ln2Res.out;
-    const prevX2 = state.prevX2 || new Float32Array(dim);
-
-    const rx2Res = this.ddlerp(h_ln, prevX2, this.W_x_rx2.forward(h_ln));
-    const kx2Res = this.ddlerp(h_ln, prevX2, this.W_x_kx2.forward(h_ln));
-    const rx2 = rx2Res.out, kx2 = kx2Res.out;
-
-    const r2 = RWKVv6Block.sigmoid(this.Wr2.forward(rx2));
-    const k_cmix = this.Wk2.forward(kx2);
-
-    const k_relu2 = new Float32Array(k_cmix.length);
-    for (let i = 0; i < k_cmix.length; i++) k_relu2[i] = Math.max(0, k_cmix[i]) ** 2;
-
-    const cmix_out = this.Wv2.forward(k_relu2);
-
-    const out = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) out[i] = h[i] + r2[i] * cmix_out[i];
-
-    const nextState = {
-      prevX: new Float32Array(x_ln),
-      prevX2: new Float32Array(h_ln),
-      num: new Float32Array(num),
-      den: new Float32Array(den)
-    };
-
-    return {
-      out,
-      state: nextState,
-      caches: { ln1: ln1Res.cache, ln2: ln2Res.cache, x_ln, h_ln, prevX, prevX2, rx, kx, vx, rx2, kx2, r, k, v, gated, k_relu2 }
-    };
-  }
-
-  backward(gradOut, caches) {
-    const dim = this.dim;
-    const gradCmixOut = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradCmixOut[i] = gradOut[i] * (caches.r2?.[i] || 1);
-
-    const gradKRelu2 = this.Wv2.backward(gradCmixOut, caches.k_relu2);
-    const gradKcmix = new Float32Array(gradKRelu2 ? gradKRelu2.length : dim);
-    if (gradKRelu2) {
-      for (let i = 0; i < gradKRelu2.length; i++) {
-        const kval = caches.k_relu2?.[i] || 0;
-        gradKcmix[i] = gradKRelu2[i] * 2 * Math.sqrt(Math.max(0, kval));
-      }
-    }
-
-    this.Wk2.backward(gradKcmix, caches.kx2);
-    this.Wr2.backward(gradOut, caches.rx2);
-
-    const gradGated = this.Wo.backward(gradOut, caches.gated);
-
-    this.Wv.backward(gradOut, caches.vx);
-    this.Wk.backward(gradOut, caches.kx);
-    this.Wr.backward(gradOut, caches.rx);
-    this.W_x_w.backward(gradOut, caches.x_ln);
-
-    return gradOut;
-  }
-}
-
-class RWKVv7Block {
-  constructor(dim, dimFFN) {
-    this.dim = dim;
-    this.ln1 = new LayerNorm(dim);
-    this.ln2 = new LayerNorm(dim);
-
-    this.W_x_r  = new BitLinear(dim, dim);
-    this.W_x_k  = new BitLinear(dim, dim);
-    this.W_x_v  = new BitLinear(dim, dim);
-    this.W_x_kappa = new BitLinear(dim, dim);
-    this.W_x_a  = new BitLinear(dim, dim);
-    this.W_x_w  = new BitLinear(dim, dim);
-    this.W_o    = new BitLinear(dim, dim);
-    this.W_g    = new BitLinear(dim, dim);
-
-    this.W_x_rx2 = new BitLinear(dim, dim);
-    this.W_x_kx2 = new BitLinear(dim, dim);
-    this.Wr2 = new BitLinear(dim, dim);
-    this.Wk2 = new BitLinear(dim, dimFFN);
-    this.Wv2 = new BitLinear(dimFFN, dim);
-
-    this.mu_r = new Float32Array(dim).fill(0.5);
-    this.mu_k = new Float32Array(dim).fill(0.5);
-    this.mu_v = new Float32Array(dim).fill(0.5);
-    this.mu_kappa = new Float32Array(dim).fill(0.5);
-    this.mu_a = new Float32Array(dim).fill(0.5);
-    this.mu_w = new Float32Array(dim).fill(0.5);
-    // Gradient accumulators for mu parameters (token-shift interpolation weights)
-    this.mu_r_grad    = new Float32Array(dim);
-    this.mu_k_grad    = new Float32Array(dim);
-    this.mu_v_grad    = new Float32Array(dim);
-    this.mu_kappa_grad = new Float32Array(dim);
-    this.mu_a_grad    = new Float32Array(dim);
-    this.mu_w_grad    = new Float32Array(dim);
-  }
-
-  zeroMuGrad() {
-    this.mu_r_grad.fill(0); this.mu_k_grad.fill(0); this.mu_v_grad.fill(0);
-    this.mu_kappa_grad.fill(0); this.mu_a_grad.fill(0); this.mu_w_grad.fill(0);
-  }
-
-  muStep(lr) {
-    const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
-    for (let i = 0; i < this.dim; i++) {
-      this.mu_r[i]     = clamp(this.mu_r[i]     - lr * this.mu_r_grad[i],     0, 1);
-      this.mu_k[i]     = clamp(this.mu_k[i]     - lr * this.mu_k_grad[i],     0, 1);
-      this.mu_v[i]     = clamp(this.mu_v[i]     - lr * this.mu_v_grad[i],     0, 1);
-      this.mu_kappa[i] = clamp(this.mu_kappa[i] - lr * this.mu_kappa_grad[i], 0, 1);
-      this.mu_a[i]     = clamp(this.mu_a[i]     - lr * this.mu_a_grad[i],     0, 1);
-      this.mu_w[i]     = clamp(this.mu_w[i]     - lr * this.mu_w_grad[i],     0, 1);
-    }
-    this.zeroMuGrad();
-  }
-
-  static sigmoid(x) {
-    const o = new Float32Array(x.length);
-    for (let i=0; i<x.length; i++) o[i] = 1 / (1 + Math.exp(-Math.max(-40, Math.min(40, x[i]))));
-    return o;
-  }
-
-  tokenShift(x, prevX, mu) {
-    const out = new Float32Array(this.dim);
-    for (let i = 0; i < this.dim; i++) {
-      out[i] = x[i] + mu[i] * (prevX[i] - x[i]);
-    }
-    return out;
-  }
-
-  forward(x, state) {
-    const dim = this.dim;
-    const ln1Res = this.ln1.forward(x);
-    const x_ln = ln1Res.out;
-    const prevX = state.prevX || new Float32Array(dim);
-
-    const xr = this.tokenShift(x_ln, prevX, this.mu_r);
-    const xk = this.tokenShift(x_ln, prevX, this.mu_k);
-    const xv = this.tokenShift(x_ln, prevX, this.mu_v);
-    const xkappa = this.tokenShift(x_ln, prevX, this.mu_kappa);
-    const xa = this.tokenShift(x_ln, prevX, this.mu_a);
-    const xw = this.tokenShift(x_ln, prevX, this.mu_w);
-
-    const r = RWKVv7Block.sigmoid(this.W_x_r.forward(xr));
-    const k = this.W_x_k.forward(xk);
-    const v = this.W_x_v.forward(xv);
-    const kappa_raw = this.W_x_kappa.forward(xkappa);
-    const a = RWKVv7Block.sigmoid(this.W_x_a.forward(xa));
-    const w_proj = this.W_x_w.forward(xw);
-
-    const w = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      w[i] = Math.exp(-Math.exp(Math.max(-8, Math.min(0, w_proj[i] - 0.5))));
-    }
-
-    let kappaNorm = 0;
-    for (let i = 0; i < dim; i++) kappaNorm += kappa_raw[i] * kappa_raw[i];
-    kappaNorm = Math.sqrt(kappaNorm) + 1e-8;
-    const kappa = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) kappa[i] = kappa_raw[i] / kappaNorm;
-
-    // Save state BEFORE in-place update (needed for backward)
-    const num_prev = new Float32Array(state.num || new Float32Array(dim));
-    const den_prev = new Float32Array(state.den || new Float32Array(dim).fill(1));
-    const num = new Float32Array(num_prev);
-    const den = new Float32Array(den_prev);
-
-    let removalDot = 0;
-    for (let i = 0; i < dim; i++) removalDot += a[i] * kappa[i] * num[i];
-
-    const wkv = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      num[i] = w[i] * num[i] - kappa[i] * removalDot + k[i] * v[i];
-      den[i] = w[i] * den[i] - kappa[i] * removalDot + k[i];
-      wkv[i] = num[i] / (Math.abs(den[i]) + 1e-8);
-    }
-
-    const g = RWKVv7Block.sigmoid(this.W_g.forward(x_ln));
-    const gated = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gated[i] = r[i] * wkv[i] * g[i];
-
-    const tmix_out = this.W_o.forward(gated);
-    const h = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) h[i] = x[i] + tmix_out[i];
-
-    const ln2Res = this.ln2.forward(h);
-    const h_ln = ln2Res.out;
-    const prevX2 = state.prevX2 || new Float32Array(dim);
-
-    const rx2 = this.tokenShift(h_ln, prevX2, this.mu_r);
-    const kx2 = this.tokenShift(h_ln, prevX2, this.mu_k);
-
-    const r2 = RWKVv7Block.sigmoid(this.Wr2.forward(rx2));
-    const k_cmix = this.Wk2.forward(kx2);
-
-    const k_relu2 = new Float32Array(k_cmix.length);
-    for (let i = 0; i < k_cmix.length; i++) k_relu2[i] = Math.max(0, k_cmix[i]) ** 2;
-
-    const cmix_out = this.Wv2.forward(k_relu2);
-    const out = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) out[i] = h[i] + r2[i] * cmix_out[i];
-
-    const nextState = {
-      prevX: new Float32Array(x_ln),
-      prevX2: new Float32Array(h_ln),
-      num: new Float32Array(num),
-      den: new Float32Array(den)
-    };
-
-    return {
-      out,
-      state: nextState,
-      caches: {
-        ln1: ln1Res.cache,
-        ln2: ln2Res.cache,
-        x_ln, h_ln, prevX, prevX2,
-        xr, xk, xv, xkappa, xa, xw,
-        r, k, v, kappa, a, w, g,
-        gated, k_relu2, rx2, kx2,
-        num_prev, den_prev,
-        num_new: new Float32Array(num),
-        den_new: new Float32Array(den),
-        wkv: new Float32Array(wkv),
-        removalDot,
-        w_proj,
-        kappaNorm,
-        r2,
-        cmix_out
-      }
-    };
-  }
-
-  // gradStateIn = { num: Float32Array, den: Float32Array } from timestep t+1 (or null)
-  // Returns { gradBlockIn: dL/d(x_ln), gradStatePrev: { num, den } }
-  backward(gradOut, caches, gradStateIn = null) {
-    const dim = this.dim;
-    const {
-      x_ln, h_ln, prevX, prevX2,
-      xr, xk, xv, xkappa, xa, xw,
-      r, k, v, kappa, a, w, g,
-      gated, k_relu2, rx2, kx2,
-      num_prev, den_prev, num_new, den_new,
-      wkv, removalDot, w_proj, kappaNorm,
-      r2, cmix_out
-    } = caches;
-
-    // ── CHANNEL MIX BACKWARD ──────────────────────────────────────────────
-    const gradCmixOut = new Float32Array(dim);
-    const gradR2      = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradCmixOut[i] = gradOut[i] * r2[i];
-      gradR2[i]      = gradOut[i] * cmix_out[i];
-    }
-
-    const gradKRelu2 = this.Wv2.backward(gradCmixOut, k_relu2);
-
-    const gradKcmix = new Float32Array(gradKRelu2.length);
-    for (let i = 0; i < gradKRelu2.length; i++) {
-      gradKcmix[i] = gradKRelu2[i] * 2 * Math.sqrt(Math.max(0, k_relu2[i]));
-    }
-
-    const gradKx2fromWk2 = this.Wk2.backward(gradKcmix, kx2);
-
-    const gradPreSigR2 = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradPreSigR2[i] = gradR2[i] * r2[i] * (1 - r2[i]);
-    const gradRx2 = this.Wr2.backward(gradPreSigR2, rx2);
-
-    for (let i = 0; i < dim; i++) {
-      const diff2 = prevX2[i] - h_ln[i];
-      this.mu_r_grad[i] += gradRx2[i] * diff2;
-      this.mu_k_grad[i] += (gradKx2fromWk2 ? gradKx2fromWk2[i] : 0) * diff2;
-    }
-
-    // ── LN2 BACKWARD ──────────────────────────────────────────────────────
-    const gradHln = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradHln[i] += gradRx2[i] * (1 - this.mu_r[i]);
-      if (gradKx2fromWk2) gradHln[i] += gradKx2fromWk2[i] * (1 - this.mu_k[i]);
-    }
-    this.ln2.backward(gradHln, caches.ln2);
-
-    const gradH = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradH[i] = gradOut[i];
-
-    // ── TIME MIX BACKWARD ─────────────────────────────────────────────────
-    const gradGated = this.W_o.backward(gradH, gated);
-
-    const gradR   = new Float32Array(dim);
-    const gradWkv = new Float32Array(dim);
-    const gradG   = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradR[i]   = gradGated[i] * wkv[i] * g[i];
-      gradWkv[i] = gradGated[i] * r[i]   * g[i];
-      gradG[i]   = gradGated[i] * r[i]   * wkv[i];
-    }
-
-    const gradPreSigG = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradPreSigG[i] = gradG[i] * g[i] * (1 - g[i]);
-    const gradXlnFromG = this.W_g.backward(gradPreSigG, x_ln);
-
-    const gradPreSigR = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradPreSigR[i] = gradR[i] * r[i] * (1 - r[i]);
-    const gradXrFromR = this.W_x_r.backward(gradPreSigR, xr);
-
-    // ── WKV RECURRENCE BACKWARD ───────────────────────────────────────────
-    const gradNumNew = new Float32Array(dim);
-    const gradDenNew = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      const denAbs  = Math.abs(den_new[i]) + 1e-8;
-      const denSign = den_new[i] >= 0 ? 1 : -1;
-      gradNumNew[i] = gradWkv[i] / denAbs
-                    + (gradStateIn ? gradStateIn.num[i] : 0);
-      gradDenNew[i] = -gradWkv[i] * num_new[i] / (denAbs * denAbs) * denSign
-                    + (gradStateIn ? gradStateIn.den[i] : 0);
-    }
-
-    let sumKD = 0;
-    for (let j = 0; j < dim; j++) sumKD += kappa[j] * (gradNumNew[j] + gradDenNew[j]);
-
-    const gradW = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradW[i] = gradNumNew[i] * num_prev[i] + gradDenNew[i] * den_prev[i];
-    }
-
-    const gradNumPrev = new Float32Array(dim);
-    const gradDenPrev = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradNumPrev[i] = gradNumNew[i] * w[i] - a[i] * kappa[i] * sumKD;
-      gradDenPrev[i] = gradDenNew[i] * w[i];
-    }
-
-    const gradA = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradA[i] = -sumKD * kappa[i] * num_prev[i];
-
-    const gradKappa = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradKappa[i] = -removalDot * (gradNumNew[i] + gradDenNew[i])
-                   - a[i] * num_prev[i] * sumKD;
-    }
-
-    const gradK = new Float32Array(dim);
-    const gradV = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradK[i] = gradNumNew[i] * v[i] + gradDenNew[i];
-      gradV[i] = gradNumNew[i] * k[i];
-    }
-
-    // ── w BACKWARD (double-exp) ────────────────────────────────────────────
-    const gradWproj = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      const shifted = w_proj[i] - 0.5;
-      if (shifted > -8 && shifted < 0) {
-        const outer = -Math.log(Math.max(w[i], 1e-9));
-        gradWproj[i] = gradW[i] * w[i] * (-outer);
-      }
-    }
-    const gradXwFromW = this.W_x_w.backward(gradWproj, xw);
-
-    // ── kappa BACKWARD (L2 normalization) ─────────────────────────────────
-    let dotGKK = 0;
-    for (let i = 0; i < dim; i++) dotGKK += gradKappa[i] * kappa[i];
-    const gradKappaRaw = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) {
-      gradKappaRaw[i] = (gradKappa[i] - kappa[i] * dotGKK) / kappaNorm;
-    }
-    const gradXkappaFromK = this.W_x_kappa.backward(gradKappaRaw, xkappa);
-
-    // ── a, v, k BACKWARD ──────────────────────────────────────────────────
-    const gradPreSigA = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradPreSigA[i] = gradA[i] * a[i] * (1 - a[i]);
-    const gradXaFromA = this.W_x_a.backward(gradPreSigA, xa);
-
-    const gradXvFromV = this.W_x_v.backward(gradV, xv);
-    const gradXkFromK = this.W_x_k.backward(gradK, xk);
-
-    // ── TOKEN SHIFT BACKWARD (time mix) ───────────────────────────────────
-    const gradXln = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradXln[i] += gradXlnFromG[i];
-
-    const shifts = [
-      [gradXrFromR,    this.mu_r,     this.mu_r_grad   ],
-      [gradXkFromK,    this.mu_k,     this.mu_k_grad   ],
-      [gradXvFromV,    this.mu_v,     this.mu_v_grad   ],
-      [gradXkappaFromK,this.mu_kappa, this.mu_kappa_grad],
-      [gradXaFromA,    this.mu_a,     this.mu_a_grad   ],
-      [gradXwFromW,    this.mu_w,     this.mu_w_grad   ],
-    ];
-    for (const [gradXs, mu, muGrad] of shifts) {
-      if (!gradXs) continue;
-      for (let i = 0; i < dim; i++) {
-        muGrad[i]   += gradXs[i] * (prevX[i] - x_ln[i]);
-        gradXln[i]  += gradXs[i] * (1 - mu[i]);
-      }
-    }
-
-    return {
-      gradBlockIn:  gradXln,
-      gradStatePrev: { num: gradNumPrev, den: gradDenPrev }
-    };
-  }
-}
-
-class LanguageModel {
-  constructor(cfg) {
-    this.cfg = cfg;
-    this.embedding = new Float32Array(cfg.vocab * cfg.dim);
-    const scale = Math.sqrt(1.0 / cfg.dim);
-    for(let i=0; i<this.embedding.length; i++) this.embedding[i] = (Math.random()*2-1) * scale;
-    this.embGrad = new Float32Array(cfg.vocab * cfg.dim);
-    
-    this.ln_in = new LayerNorm(cfg.dim);
-    const BlockClass = (cfg.version === 'rwkv6') ? RWKVv6Block : RWKVv7Block;
-    this.blocks = Array.from({length: cfg.layers}, () => new BlockClass(cfg.dim, cfg.dim * 2));
-    this.ln_out = new LayerNorm(cfg.dim);
-    this.head = new BitLinear(cfg.dim, cfg.vocab);
-  }
-
-  getEmptyState() {
-    return this.blocks.map(() => ({ prevX: null, prevX2: null, num: null, den: null }));
-  }
-
-  forward(tokenId, state) {
-    const id = (tokenId >= 0 && tokenId < this.cfg.vocab) ? tokenId : 0;
-    let x = new Float32Array(this.cfg.dim);
-    for(let i=0; i<this.cfg.dim; i++) x[i] = this.embedding[id * this.cfg.dim + i];
-    
-    const lnInRes = this.ln_in.forward(x);
-    x = lnInRes.out;
-    const nextState = [];
-    const blockCaches = [];
-    
-    for(let i=0; i<this.blocks.length; i++) {
-      const res = this.blocks[i].forward(x, state[i]);
-      x = res.out;
-      nextState.push(res.state);
-      blockCaches.push(res.caches);
-    }
-    
-    const preHeadRes = this.ln_out.forward(x);
-    const logits = this.head.forward(preHeadRes.out);
-    
-    return { logits, state: nextState, caches: { 
-      lnIn: lnInRes.cache, 
-      lnOut: preHeadRes.cache, 
-      blocks: blockCaches, 
-      preHeadOut: preHeadRes.out,
-      tokenId: id
-    } };
-  }
-
-  // gradStatesIn[i] = { num, den } gradient from timestep t+1 for block i (or null)
-  // Returns { gradIn, gradStatesOut } where gradStatesOut feeds to previous timestep
-  backward(gradOut, caches, gradStatesIn = null) {
-    let gradIn = this.head.backward(gradOut, caches.preHeadOut);
-    gradIn = this.ln_out.backward(gradIn, caches.lnOut);
-
-    const gradStatesOut = this.blocks.map(() => ({
-      num: new Float32Array(this.cfg.dim),
-      den: new Float32Array(this.cfg.dim)
-    }));
-
-    for (let i = this.blocks.length - 1; i >= 0; i--) {
-      const stateIn = gradStatesIn ? gradStatesIn[i] : null;
-      const result = this.blocks[i].backward(gradIn, caches.blocks[i], stateIn);
-      if (result && result.gradBlockIn) {
-        gradStatesOut[i] = result.gradStatePrev;
-        gradIn = this.blocks[i].ln1.backward(result.gradBlockIn, caches.blocks[i].ln1);
-      } else {
-        // Fallback for RWKVv6 blocks (old signature)
-        gradIn = this.blocks[i].ln1.backward(gradIn, caches.blocks[i].ln1);
-      }
-    }
-    const embBase = caches.tokenId * this.cfg.dim;
-    for (let i = 0; i < this.cfg.dim; i++) {
-      this.embGrad[embBase + i] += gradIn[i];
-    }
-    gradIn = this.ln_in.backward(gradIn, caches.lnIn);
-    return { gradIn, gradStatesOut };
-  }
-
-  embStep(lr) {
-    for (let i = 0; i < this.embGrad.length; i++) {
-      this.embedding[i] -= lr * this.embGrad[i];
-    }
-    this.embGrad.fill(0);
-  }
-
-  getLinearLayers() {
-    const layers = [];
-    for(const b of this.blocks) {
-      if (b instanceof RWKVv7Block) {
-        layers.push(b.W_x_r, b.W_x_k, b.W_x_v, b.W_x_kappa, b.W_x_a, b.W_x_w, b.W_o, b.W_g,
-          b.W_x_rx2, b.W_x_kx2, b.Wr2, b.Wk2, b.Wv2);
-      } else {
-        layers.push(b.W_x_rx, b.W_x_kx, b.W_x_vx, b.W_x_w, b.Wr, b.Wk, b.Wv, b.Wo, 
-          b.W_x_rx2, b.W_x_kx2, b.Wr2, b.Wk2, b.Wv2);
-      }
-    }
-    layers.push(this.head);
-    return layers;
-  }
-
-  zeroGrad() {
-    this.ln_in.zeroGrad(); this.ln_out.zeroGrad();
-    for(const b of this.blocks) {
-      b.ln1.zeroGrad(); b.ln2.zeroGrad();
-      if (b.zeroMuGrad) b.zeroMuGrad();
-    }
-    for(const l of this.getLinearLayers()) l.zeroGrad();
-  }
-}
-
-const JuntoNode = {
-  channel: null,
-  nodeId: null,
-  corpusLabel: 'unnamed',
-
-  init(nodeId, corpusLabel) {
-    this.nodeId = nodeId || ('node-' + Math.random().toString(36).slice(2, 7));
-    this.corpusLabel = corpusLabel || 'unnamed';
-    this.channel = new BroadcastChannel('junto-swarm');
-    this.channel.onmessage = (e) => this.handleMessage(e.data);
-    this.broadcast({ type: 'node-ready', nodeId: this.nodeId, corpusLabel: this.corpusLabel });
-    sysLog(`Junto node active: ${this.nodeId}`, 'ok');
-  },
-
-  handleMessage(msg) {
-    if (msg.type === 'vocab-sync') {
-      this.receiveVocab(msg.vocab, msg.merges, msg.size);
-    }
-    if (msg.type === 'query' && msg.targetNodeId === this.nodeId) {
-      this.handleQuery(msg);
-    }
-    if (msg.type === 'ping') {
-      if (App.model) this.broadcast({ type: 'node-ready', nodeId: this.nodeId, corpusLabel: this.corpusLabel });
-    }
-  },
-
-  receiveVocab(vocab, merges, size) {
-    App.tokenizer.vocab = vocab;
-    App.tokenizer.merges = merges;
-    App.tokenizer.size = size;
-    App.tokenizer.trained = true;
-    this.broadcast({ type: 'vocab-ack', nodeId: this.nodeId });
-    sysLog('Shared vocab received from orchestrator.', 'ok');
-  },
-
-  async handleQuery(msg) {
-    if (!App.model || !App.tokenizer.trained) {
-      this.broadcast({ type: 'query-error', nodeId: this.nodeId, queryId: msg.queryId, reason: 'model-not-ready' });
-      return;
-    }
-    const tokens = msg.promptTokens;
-    let state = App.model.getEmptyState();
-    let lastId = tokens[0] || 0;
-    for (let i = 0; i < tokens.length - 1; i++) {
-      state = App.model.forward(tokens[i], state).state;
-    }
-    const res = App.model.forward(lastId, state);
-    const logits = Array.from(res.logits);
-    this.broadcast({ type: 'logits', nodeId: this.nodeId, queryId: msg.queryId, logits });
-  },
-
-  broadcast(msg) {
-    if (this.channel) this.channel.postMessage(msg);
-    const statusEl = document.getElementById('junto-status');
-    if (statusEl) {
-      statusEl.textContent = `Active - Last: ${msg.type}`;
-      statusEl.style.color = 'var(--accent)';
-    }
-  }
-};
-
-const App = {
-  model: null,
-  tokenizer: new NanoTokenizer(),
-  trainer: null,
-  corpusData: [],
-  corpusText: '',
-  grpoOpt: null
-};
-
-function updateArchStats() {
-  const v = parseInt(document.getElementById('cfg-vocab').value);
-  const d = parseInt(document.getElementById('cfg-dim').value);
-  const l = parseInt(document.getElementById('cfg-layers').value);
-  const version = document.getElementById('cfg-version').value;
-
-  document.getElementById('val-vocab').value = v;
-  document.getElementById('val-dim').value = d;
-  document.getElementById('val-layers').value = l;
-  document.getElementById('val-ctx').value = document.getElementById('cfg-ctx').value;
-  
-  const emb = v * d;
-  const head = d * v;
-  const block = version === 'rwkv7' 
-    ? d*d*11 + d*(d*2) + (d*2)*d  // v7 has 11 dim*dim layers
-    : d*d*8 + d*(d*2) + (d*2)*d;   // v6 has 8 dim*dim layers
-  const total = emb + head + (l * block);
-  
-  document.getElementById('stat-params').textContent = (total / 1000000).toFixed(2) + 'M';
-}
-
-function handleTextInput(txt) {
-  App.corpusText = txt;
-  document.getElementById('ft-corpus').textContent = txt.length.toLocaleString();
-}
-
-function handleFileInput(input) {
-  const file = input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    handleTextInput(e.target.result);
-    document.getElementById('corpus-input').value = App.corpusText.substring(0, 500) + '...';
-    sysLog('Corpus File Read Successfully.', 'ok');
-  };
-  reader.readAsText(file);
-}
-
-function handleFileDrop(e) {
-  const file = e.dataTransfer.files[0];
-  if(file && (file.name.endsWith('.txt') || file.name.endsWith('.md'))) {
-     const dummyInput = { files: [file] };
-     handleFileInput(dummyInput);
-  } else {
-     sysLog('Invalid file type. Drop .txt or .md', 'error');
-  }
-}
-
-async function initiateTokenizer() {
-  if(App.corpusText.length < 100) return sysLog('Corpus too small. Min 100 chars.', 'error');
-  const targetVocab = parseInt(document.getElementById('cfg-vocab').value);
-  
-  document.getElementById('btn-build-bpe').disabled = true;
-  sysLog('Initializing WebWorker BPE Generation...', 'info');
-  
-  try {
-    await App.tokenizer.train(App.corpusText, targetVocab);
-    App.corpusData = App.tokenizer.encode(App.corpusText);
-    document.getElementById('ft-tok').textContent = App.corpusData.length.toLocaleString();
-    sysLog(`Tokenizer compiled. Actual vocab: ${App.tokenizer.size}`, 'ok');
-    document.getElementById('btn-alloc').disabled = false;
-  } catch(e) {
-    sysLog('Tokenizer Error: ' + e, 'error');
-  } finally {
-    document.getElementById('btn-build-bpe').disabled = false;
-  }
-}
-
-function allocateMemory() {
-  if(!App.tokenizer.trained) return;
-  const cfg = {
-    vocab: App.tokenizer.size,
-    dim: parseInt(document.getElementById('cfg-dim').value),
-    layers: parseInt(document.getElementById('cfg-layers').value),
-    version: document.getElementById('cfg-version').value
-  };
-  try {
-    App.model = new LanguageModel(cfg);
-    sysLog(`VM Allocated: ${cfg.version} with Float32Arrays contiguous memory blocks.`, 'ok');
-    document.getElementById('btn-train-start').disabled = false;
-    document.getElementById('live-eval').innerHTML = 'Model ready for sampling...';
-    document.getElementById('route-train').checked = true;
-    
-    if (JuntoNode.channel) {
-      JuntoNode.broadcast({ type: 'node-ready', nodeId: JuntoNode.nodeId, corpusLabel: JuntoNode.corpusLabel });
-    }
-  } catch(e) { sysLog('Allocation failed: ' + e.message, 'error'); }
-}
-
-async function startTraining() {
-  if(!App.model) return;
-  const lr = parseFloat(document.getElementById('cfg-lr').value) / 1000;
-  const ctx = parseInt(document.getElementById('cfg-ctx').value);
-  const optType = document.getElementById('cfg-optimizer').value;
-  
-  if(!App.trainer) {
-    const opt = optType === 'muon' ? new MuonOptimizer(lr) : new AdamOptimizer(lr);
-    App.trainer = new Trainer(App.model, opt);
-  } else {
-    const newOpt = optType === 'muon' ? new MuonOptimizer(lr) : new AdamOptimizer(lr);
-    App.trainer.opt = newOpt;
-    App.trainer.isPaused = false;
-  }
-  
-  App.trainer.isRunning = true;
-  document.getElementById('btn-train-start').disabled = true;
-  document.getElementById('btn-train-pause').disabled = false;
-  sysLog('Initiating OOMB Loop...', 'ok');
-  
-  let accumLoss = 0;
-  let microStep = 0;
-  const tStart = Date.now();
-  
-  while(App.trainer.isRunning) {
-    if(App.trainer.isPaused) { await yieldToMain(); continue; }
-    
-    const maxIdx = Math.max(0, App.corpusData.length - ctx - 1);
-    const startIdx = Math.floor(Math.random() * maxIdx);
-    const sequence = App.corpusData.slice(startIdx, startIdx + ctx + 1);
-    
-    try {
-      accumLoss += await App.trainer.trainSequence(sequence);
-      microStep++;
-      
-      if(microStep >= CONFIG.grad_accum_steps) {
-        await App.trainer.opt.step(App.model);
-        App.model.embStep(lr * 0.1);
-        App.model.zeroGrad();
-        
-        App.trainer.globalStep++;
-        const avgLoss = accumLoss / CONFIG.grad_accum_steps;
-
-        const scheduledLR = computeScheduledLR(lr, App.trainer.globalStep);
-        App.trainer.opt.lr = scheduledLR;
-        document.getElementById('ui-active-lr').textContent = scheduledLR.toFixed(5);
-        document.getElementById('ui-sched-step').textContent = App.trainer.globalStep;
-
-        if (document.getElementById('auto-save-en').checked) {
-          const saveEvery = parseInt(document.getElementById('auto-save-steps').value) || 500;
-          const nextSave = saveEvery - (App.trainer.globalStep % saveEvery);
-          document.getElementById('ui-next-save').textContent = nextSave;
-          if (App.trainer.globalStep % saveEvery === 0) {
-            sysLog(`Auto-save at step ${App.trainer.globalStep}...`, 'info');
-            await exportModel();
-          }
-        } else {
-          document.getElementById('ui-next-save').textContent = '-';
-        }
-
-        if (document.getElementById('auto-pause-en').checked) {
-          const pauseAt = parseFloat(document.getElementById('auto-pause-loss').value) || 1.0;
-          if (avgLoss < pauseAt) {
-            sysLog(`Loss ${avgLoss.toFixed(4)} crossed threshold ${pauseAt}. Auto-pausing.`, 'ok');
-            pauseTraining();
-            break;
-          }
-        }
-        
-        document.getElementById('ui-step').textContent = App.trainer.globalStep;
-        document.getElementById('ui-loss').textContent = avgLoss.toFixed(4);
-        
-        const tps = (App.trainer.globalStep * ctx) / ((Date.now() - tStart) / 1000);
-        document.getElementById('ui-tps').textContent = tps.toFixed(1);
-        
-        updateVisualizations(avgLoss);
-        
-        if (App.trainer.globalStep % 5 === 0) await sampleLiveText();
-        
-        accumLoss = 0; microStep = 0;
-      }
-    } catch(e) {
-      sysLog('Training Error: ' + e, 'error');
-      pauseTraining();
-    }
-    await yieldToMain();
-  }
-}
-
-function updateVisualizations(loss) {
-  const container = document.getElementById('loss-graph');
-  const bar = document.createElement('div');
-  bar.className = 'loss-bar';
-  CONFIG.ema_loss = 0.1 * loss + 0.9 * CONFIG.ema_loss;
-  bar.style.height = Math.max(1, Math.min(100, (CONFIG.ema_loss/10)*100)) + '%';
-  bar.title = `Raw: ${loss.toFixed(4)} | EMA: ${CONFIG.ema_loss.toFixed(4)}`;
-  container.appendChild(bar);
-  if(container.children.length > 100) container.removeChild(container.firstChild);
-  
-  const w = App.model.head.weight;
-  let n=0, z=0, p=0;
-  let sum=0; for(let i=0; i<w.length; i++) sum+=Math.abs(w[i]);
-  const g = (sum/w.length) || 1e-8;
-  for(let i=0; i<w.length; i++) {
-    const t = Math.round(w[i]/g);
-    if(t<0) n++; else if(t>0) p++; else z++;
-  }
-  
-  document.getElementById('hist-neg').style.height = (n/w.length*100) + '%';
-  document.getElementById('hist-zero').style.height = (z/w.length*100) + '%';
-  document.getElementById('hist-pos').style.height = (p/w.length*100) + '%';
-  
-  document.getElementById('pct-neg').textContent = Math.round(n/w.length*100);
-  document.getElementById('pct-zero').textContent = Math.round(z/w.length*100);
-  document.getElementById('pct-pos').textContent = Math.round(p/w.length*100);
-}
-
-function pauseTraining() {
-  if(App.trainer) App.trainer.isPaused = true;
-  document.getElementById('btn-train-start').disabled = false;
-  document.getElementById('btn-train-pause').disabled = true;
-  sysLog('Training Paused.', 'warn');
-}
-
-async function sampleLiveText() {
-  if (!App.corpusData || App.corpusData.length < 4) return;
-  
-  let s = App.model.getEmptyState();
-  
-  const seedStart = Math.floor(Math.random() * (App.corpusData.length - 4));
-  const seedIds = App.corpusData.slice(seedStart, seedStart + 3);
-  const seedText = App.tokenizer.decode(seedIds);
-  
-  let lastId = seedIds[seedIds.length - 1];
-  for (let i = 0; i < seedIds.length - 1; i++) {
-    s = App.model.forward(seedIds[i], s).state;
-  }
-  
-  let generated = '';
-  for(let i=0; i<40; i++) {
-    const res = App.model.forward(lastId, s);
-    s = res.state;
-    lastId = sampleLogits(res.logits, 0.8, 0.9);
-    generated += App.tokenizer.decode([lastId]);
-  }
-  
-  document.getElementById('live-eval').innerHTML = 
-    `<span style="opacity:0.4">Step ${App.trainer.globalStep} | </span>` +
-    `<span style="opacity:0.6">${seedText}</span>` +
-    `<span class="highlight">${generated}</span>`;
-}
-
-let activeInference = false;
-async function startInference() {
-  if(!App.model) return sysLog('Model required.', 'error');
-  
-  activeInference = true;
-  document.getElementById('btn-infer-run').disabled = true;
-  document.getElementById('btn-infer-stop').disabled = false;
-  
-  const prompt = document.getElementById('inf-prompt').value || ' ';
-  const t = parseFloat(document.getElementById('inf-temp').value) / 100;
-  const p = parseFloat(document.getElementById('inf-topp').value) / 100;
-  const max = parseInt(document.getElementById('inf-maxt').value);
-  const topK = parseInt(document.getElementById('inf-topk').value) || 0;
-  const repPenalty = parseFloat(document.getElementById('inf-rep-penalty').value) / 100;
-  
-  const outBox = document.getElementById('inf-output');
-  outBox.innerHTML = `<span style="opacity:0.5">${prompt}</span>`;
-  
-  let state = App.model.getEmptyState();
-  let ids = App.tokenizer.encode(prompt);
-  let lastId = ids.length > 0 ? ids[ids.length-1] : 0;
-  
-  for(let i=0; i<ids.length-1; i++) {
-    state = App.model.forward(ids[i], state).state;
-  }
-  
-  let buffer = '';
-  const recentTokens = [...ids];
-  try {
-    for(let i=0; i<max && activeInference; i++) {
-      const res = App.model.forward(lastId, state);
-      state = res.state;
-      lastId = sampleLogitsExtended(res.logits, t, p, topK, repPenalty, recentTokens);
-      recentTokens.push(lastId);
-      const char = App.tokenizer.decode([lastId]);
-      buffer += char;
-      outBox.innerHTML = `<span style="opacity:0.5">${prompt}</span><span class="highlight">${buffer}</span>`;
-      outBox.scrollTop = outBox.scrollHeight;
-      await yieldToMain();
-    }
-    if (buffer) {
-      outBox.innerHTML = `<span style="opacity:0.5">${prompt}</span><span class="highlight">${buffer}</span>`;
-      outBox.scrollTop = outBox.scrollHeight;
-    }
-  } catch(e) { sysLog('Infer Error: ' + e, 'error'); }
-  
-  stopInference();
-}
-
-function stopInference() {
-  activeInference = false;
-  document.getElementById('btn-infer-run').disabled = false;
-  document.getElementById('btn-infer-stop').disabled = true;
-}
-
-let grpoEpochCounter = 0;
-async function executeGRPOEpoch() {
-  if(!App.model) return sysLog('Model required for alignment.', 'error');
-  
-  const btn = document.getElementById('btn-grpo-exec');
-  btn.disabled = true;
-  btn.textContent = "COMPUTING COHORTS...";
-  
-  const prompt = document.getElementById('grpo-prompt').value;
-  const target = document.getElementById('grpo-target').value;
-  const outDiv = document.getElementById('grpo-output');
-  outDiv.innerHTML = '';
-  
-  const pIds = App.tokenizer.encode(prompt);
-  const cohorts = [];
-  
-  for(let i=0; i<CONFIG.grpo_g_size; i++) {
-    let s = App.model.getEmptyState();
-    let last = pIds[0] || 0;
-    for(let j=0; j<pIds.length; j++) {
-      const r = App.model.forward(pIds[j], s); s = r.state; last = pIds[j];
-    }
-    
-    const acts = []; const toks = [];
-    for(let k=0; k<40; k++) {
-      const r = App.model.forward(last, s);
-      acts.push({ logits: r.logits, caches: r.caches });
-      s = r.state;
-      last = sampleLogits(r.logits, 0.85, 0.95);
-      toks.push(last);
-    }
-    const textStr = App.tokenizer.decode(toks);
-    cohorts.push({ text: textStr, acts, toks });
-    
-    const isHit = textStr.includes(target);
-    outDiv.innerHTML += `<div style="border-left: 3px solid ${isHit?'var(--accent)':'var(--border)'}; padding-left: 12px; margin-bottom: 8px;">[G${i}] <span style="opacity:0.8">${textStr}</span></div>`;
-    await yieldToMain();
-  }
-  
-  // Read klCoeff once here — previously read inside rewards.map() but never used in gradient
-  const rewardType = document.getElementById('grpo-reward-type').value;
-  const klCoeff = parseFloat(document.getElementById('grpo-kl-coeff').value) || 0.1;
-
-  const rewards = cohorts.map(c => {
-    if (rewardType === 'regex') {
-      try {
-        return new RegExp(target).test(c.text) ? 1.0 : -0.1;
-      } catch(e) { return c.text.includes(target) ? 1.0 : -0.1; }
-    } else if (rewardType === 'length') {
-      const targetLen = parseInt(target) || 20;
-      const diff = Math.abs(c.text.length - targetLen);
-      return Math.max(-0.1, 1.0 - diff / targetLen);
-    } else {
-      return c.text.includes(target) ? 1.0 : -0.1;
-    }
-  });
-  const meanR = rewards.reduce((a,b)=>a+b)/rewards.length;
-  const variance = rewards.reduce((a,b)=>a+(b-meanR)**2)/rewards.length;
-  const stdR = Math.sqrt(variance) || 1e-8;
-  const advantages = rewards.map(r => (r - meanR) / stdR);
-
-  document.getElementById('ui-grpo-reward').textContent = meanR.toFixed(3);
-
-  App.model.zeroGrad();
-  let totalKL = 0;
-  for(let i=0; i<cohorts.length; i++) {
-    const adv = advantages[i];
-    for(let j=0; j<cohorts[i].acts.length; j++) {
-      const a = cohorts[i].acts[j];
-      const targetId = cohorts[i].toks[j];
-
-      // Softmax from stored (reference/old-policy) logits
-      let maxL = -Infinity; for(let l of a.logits) if(l>maxL) maxL=l;
-      let sumE = 0; const probs = new Float32Array(a.logits.length);
-      for(let k=0; k<a.logits.length; k++) { probs[k] = Math.exp(a.logits[k]-maxL); sumE+=probs[k]; }
-      for(let k=0; k<a.logits.length; k++) probs[k] /= sumE;
-
-      // Track KL divergence pressure (KL from uniform as proxy for policy sharpness)
-      let stepEntropy = 0;
-      for(let k=0; k<probs.length; k++) if(probs[k]>0) stepEntropy -= probs[k]*Math.log(probs[k]);
-      totalKL += Math.log(probs.length) - stepEntropy;
-
-      // Policy gradient: scale by advantage * klCoeff (UI control now actually applied)
-      // clipFactor prevents large policy jumps when advantage is high
-      const clipFactor = Math.min(1.0, CONFIG.kl_target / (Math.abs(adv) + 1e-8));
-      probs[targetId] -= 1.0;
-      for(let k=0; k<probs.length; k++) probs[k] *= adv * clipFactor * klCoeff;
-
-      App.model.backward(probs, a.caches, null);  // GRPO: single-token, no BPTT state
-    }
-    await yieldToMain();
-  }
-  
-  if (!App.grpoOpt) App.grpoOpt = new AdamOptimizer(0.005);
-  await App.grpoOpt.step(App.model);
-  App.model.embStep(0.005 * 0.1);
-
-  const avgKL = totalKL / cohorts.reduce((s,c)=>s+c.acts.length, 0) || 0;
-  grpoEpochCounter++;
-  document.getElementById('ui-grpo-epoch').textContent = grpoEpochCounter;
-  btn.textContent = "EXECUTE GRPO EPOCH";
-  btn.disabled = false;
-  sysLog(`GRPO Epoch ${grpoEpochCounter} Complete. AvgReward: ${meanR.toFixed(3)} | KL proxy: ${avgKL.toFixed(3)}`, 'ok');
-}
-
-function bufferToBase64Async(buffer) {
-  return new Promise((resolve) => {
-    const blob = new Blob([buffer], { type: 'application/octet-stream' });
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      const base64 = dataUrl.split(',')[1];
-      resolve(base64);
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
-function base64ToBuffer(base64) {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-const DB_CTX = { name: 'HTMLNLM_DB', store: 'vm_states' };
-function getDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_CTX.name, 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore(DB_CTX.store);
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror = e => reject(e.target.error);
-  });
-}
-
-async function saveToIDB() {
-  if(!App.model) return sysLog('No state available.', 'error');
-  sysLog('Committing exact memory layout to IndexedDB...', 'info');
-  
-  const state = {
-    cfg: App.model.cfg,
-    tok: { vocab: App.tokenizer.vocab, merges: App.tokenizer.merges, size: App.tokenizer.size },
-    weights: { 
-      emb: App.model.embedding.buffer,
-      layers: App.model.getLinearLayers().map(l => l.weight.buffer)
-    }
-  };
-
-  try {
-    const db = await getDB();
-    const tx = db.transaction(DB_CTX.store, 'readwrite');
-    tx.objectStore(DB_CTX.store).put(state, 'slot_1');
-    tx.oncomplete = () => sysLog('VM State securely committed to local DB.', 'ok');
-    tx.onerror = e => sysLog('DB TX Error: ' + e.target.error, 'error');
-  } catch(e) { sysLog('DB Save Error: ' + e, 'error'); }
-}
-
-async function loadFromIDB() {
-  sysLog('Hydrating exactly from IndexedDB ArrayBuffers...', 'info');
-  try {
-    const db = await getDB();
-    const req = db.transaction(DB_CTX.store, 'readonly').objectStore(DB_CTX.store).get('slot_1');
-    req.onsuccess = () => {
-      if(req.result) hydrateFromData(req.result, false);
-      else sysLog('No state found in DB slot.', 'warn');
-    };
-  } catch(e) { sysLog('DB Load Error: ' + e, 'error'); }
-}
-
-function importJSON(input) {
-  const f = input.files[0]; if(!f) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    try { 
-      const data = JSON.parse(e.target.result);
-      hydrateFromData(data, true); 
-    } catch(err) { sysLog('JSON Parsing/Hydration Failed: ' + err, 'error'); }
-  };
-  reader.readAsText(f);
-}
-
-function hydrateFromData(data, isBase64) {
-  App.tokenizer.vocab = data.tok.vocab;
-  App.tokenizer.merges = data.tok.merges;
-  App.tokenizer.size = data.tok.size;
-  App.tokenizer.trained = true;
-  document.getElementById('ft-tok').textContent = 'Hydrated';
-  
-  if(!data.cfg.version) {
-    data.cfg.version = data.version || 'rwkv6';
-  }
-  
-  App.model = new LanguageModel(data.cfg);
-  
-  App.model.embedding = new Float32Array(isBase64 ? base64ToBuffer(data.weights.emb) : data.weights.emb);
-  const layers = App.model.getLinearLayers();
-  
-  for(let i=0; i<layers.length; i++) {
-    layers[i].weight = new Float32Array(isBase64 ? base64ToBuffer(data.weights.layers[i]) : data.weights.layers[i]);
-    layers[i].markDirty();
-  }
-
-  // Load mu parameters if present (trained token-shift weights)
-  if (data.weights.mu) {
-    const muBlocks = App.model.blocks.filter(b => b.mu_r);
-    for (let i = 0; i < Math.min(muBlocks.length, data.weights.mu.length); i++) {
-      const mu = data.weights.mu[i];
-      const load = (buf) => new Float32Array(isBase64 ? base64ToBuffer(buf) : buf);
-      muBlocks[i].mu_r     = load(mu.r);
-      muBlocks[i].mu_k     = load(mu.k);
-      muBlocks[i].mu_v     = load(mu.v);
-      muBlocks[i].mu_kappa = load(mu.kappa);
-      muBlocks[i].mu_a     = load(mu.a);
-      muBlocks[i].mu_w     = load(mu.w);
-    }
-  }
-
-  sysLog('Virtual Machine Hydrated Successfully.', 'ok');
-  document.getElementById('btn-train-start').disabled = false;
-  document.getElementById('route-infer').checked = true;
-}
-
-updateArchStats();
-
-if (/Mobi|Android/i.test(navigator.userAgent)) {
-  document.getElementById('cfg-optimizer').value = 'adam';
-  updateOptimizerUI('adam');
-  sysLog('Mobile detected. Defaulting to AdamW optimizer.', 'warn');
-} else {
-  updateOptimizerUI('muon');
-}
-</script>
 </body>
 </html>

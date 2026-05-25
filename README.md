@@ -1,108 +1,61 @@
 # HTMLNLM — Browser Neural Runtime
 
-![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
-![Platform: Browser](https://img.shields.io/badge/platform-browser-blue.svg)
-![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)
-![Architecture: RWKV-v7](https://img.shields.io/badge/architecture-RWKV--v7%20Goose-teal.svg)
-![Quantization: b1.58](https://img.shields.io/badge/quantization-b1.58%20ternary-orange.svg)
-![Size: Single File](https://img.shields.io/badge/size-single%20file-purple.svg)
-![Pip Suite: Included](https://img.shields.io/badge/pip%20suite-included-ff69b4.svg)
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-browser-blue?style=flat-square)
+![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen?style=flat-square)
+![Architecture](https://img.shields.io/badge/architecture-RWKV--v7-teal?style=flat-square)
+![Quantization](https://img.shields.io/badge/quantization-b1.58%20ternary-orange?style=flat-square)
+![Size](https://img.shields.io/badge/size-single%20file-purple?style=flat-square)
 
-A complete, self-contained neural language model runtime that runs
-entirely in your browser. No server. No Python. No CUDA. No
-dependencies. One HTML file.
+**Complete browser-native LLM training and inference. Single file. Zero dependencies.**
 
-Train a language model from scratch, align it with reinforcement
-learning, and run inference — all locally, all offline, all in
-the tab you already have open.
+HTMLNLM is a full neural language model runtime that runs entirely in your browser — no server, no Python, no CUDA, no install. Open the HTML file and train a model from scratch.
 
-**v2.0.0** ships with RWKV-v7 "Goose", a fully correct backward pass,
-and the Pip Suite — three companion tools for multi-agent inference,
-swarm orchestration, and sovereign model hosting.
+Built by [ConsciousNode SoftWorks](https://consciousnode.github.io) on the xinu principle: the browser is bare metal.
 
 ---
 
-## What This Is
-
-HTMLNLM implements a full LLM training and inference pipeline using
-only browser-native APIs. It is not a wrapper around an existing
-model. It is not a demo. It trains real weights from real data using
-real gradient descent.
-
-**Architecture:** RWKV-v7 "Goose" — recurrent architecture with
-data-dependent decay gates, mu/kappa normalization, and linear-time
-inference. No KV cache. No quadratic attention.
-
-**Quantization:** BitNet b1.58 — weights constrained to ternary
-values {-1, 0, +1} via T-MAC lookup table microkernel. Matrix
-multiplication replaced with cache-efficient table lookups.
-
-**Training:** Full BPTT through the WKV recurrence — gradients now
-flow through temporal dynamics, mu parameters, kappa normalization,
-and the double-exponential decay gates. This is the fix that makes
-RWKV-v7 actually learn its state.
-
-**Backward Pass:** Chunk-recurrent OOMB (Out of Memory Barrier)
-backpropagation. Activations recomputed on-the-fly — constant memory
-footprint regardless of sequence length.
-
-**Optimizers:** AdamW (default, mobile-friendly) or Muon with
-Newton-Schulz quintic orthogonalization (desktop, higher quality).
-Both now correctly apply the mu step.
-
-**Alignment:** GRPO (Group Relative Policy Optimization) —
-critic-free reinforcement learning with Z-score normalized
-advantages and approximate KL divergence constraint.
-
-**Tokenizer:** BPE (Byte Pair Encoding) compiled in a WebWorker.
-Merges correctly applied during encode across all suite tools.
+> **Successor available:** [**HTMLNLM Evangelion**](https://github.com/ConsciousNode/HTMLNLM-Evangelion) extends this work with omnimodal input (vision, audio, spatial), SheafMemory topological contradiction detection, BooleanPhaseDynamics, AutopoieticOptimizer self-correction, and RIFT Endospace visualization. HTMLNLM remains the stable text-only runtime.
 
 ---
 
-## Files
+## Try it
 
-```
-HTMLNLM.html              — Core runtime. Train, align, and run
-                            inference on RWKV-v7 models. Start here.
+→ **[consciousnode.github.io/HTMLNLM](https://consciousnode.github.io/HTMLNLM)**
 
-pip-suite/
-  pips-room.html          — Sovereign presence shell. Upload a trained
-                            model and run it as a persistent local
-                            instance with memory and personality.
-
-  multi-pip-chat.html     — Multi-model chat. Load multiple trained
-                            models and run them in the same conversation.
-
-  junto-orchestrator.html — Swarm orchestrator. Coordinate multiple
-                            Pip instances via BroadcastChannel protocol.
-```
+Or download [`HTMLNLM.html`](https://github.com/ConsciousNode/HTMLNLM/blob/main/HTMLNLM.html) and open locally. Works fully offline.
 
 ---
 
-## How To Use
+## What's inside
 
-### Training a model (HTMLNLM.html)
+| Component | Description |
+|---|---|
+| **RWKV-v7 backbone** | Linear-time recurrent architecture, O(1) inference memory. No KV cache, no quadratic attention. |
+| **BitNet b1.58** | Ternary weight quantization {-1, 0, +1} via T-MAC lookup table microkernel. Matrix multiplication replaced with cache-efficient table lookups. |
+| **OOMB backward pass** | Out-of-Memory-Barrier chunk-recurrent backpropagation. Activations recomputed on-the-fly — constant memory regardless of sequence length. |
+| **MuonOptimizer** | Quintic Newton-Schulz orthogonalization. Keeps weight matrices well-conditioned without expensive decompositions. |
+| **AdamW** | Mobile-friendly fallback optimizer, auto-selected on battery-constrained devices. |
+| **GRPO alignment** | Group Relative Policy Optimization — critic-free RL alignment with Z-score normalized advantages and KL divergence constraint. |
+| **BPE tokenizer** | Byte Pair Encoding compiled in a WebWorker — doesn't block the UI thread. |
+| **Pip Suite** | Companion tools: Junto orchestrator, multi-pip chat, Pip's Room. |
+
+---
+
+## How to use
 
 1. Open `HTMLNLM.html` in any modern browser
-2. Go to **ARCHITECTURE** — configure model size
+2. Configure model size under **ARCHITECTURE**
 3. Drop or paste a `.txt` corpus
 4. Click **COMPILE BPE** → **ALLOCATE VM**
 5. Go to **PRE-TRAIN** → **START LOOP**
 6. Watch it learn
-7. Export weights when done
 
-### Running a model (Pip Suite)
-
-1. Export your trained model from HTMLNLM.html
-2. Open any tool in `pip-suite/`
-3. Upload the exported model file
-4. Run inference locally, no server required
-
-That's it. No install. No terminal. No accounts.
+No terminal. No accounts. No install step.
 
 ---
 
-## Architecture Details
+## Architecture
 
 ```
 Corpus (.txt)
@@ -111,131 +64,58 @@ Corpus (.txt)
 BPE Tokenizer (WebWorker)
     │
     ▼
-RWKV-v7 "Goose" Blocks × L
-  ├─ Time Mix (WKV-7 recurrent state)
-  │    ├─ Data-dependent decay gates (w)
-  │    ├─ Mu/kappa normalization
-  │    └─ Double-exponential decay
+RWKV-v7 Blocks × L
+  ├─ Time Mix (WKV recurrent state)
   ├─ Channel Mix (gated FFN)
-  └─ BitLinear (ternary weights via T-MAC)
+  └─ BitLinear (ternary weights, T-MAC)
     │
     ▼
 Language Model Head
     │
     ▼
-OOMB Backward Pass
-  ├─ BPTT through WKV recurrence
-  ├─ gradNumPrev / gradDenPrev chain
-  ├─ L2-norm backward through kappa
-  └─ Double-exp gradient through w
+OOMB Backward Pass (O(1) activation memory)
     │
     ▼
-AdamW / Muon Optimizer (both with mu step)
-    │
-    ▼
-Embedding Update (SGD, sparse)
+Muon / AdamW Optimizer
 ```
 
-**Recommended starting config:**
-- Vocab: 2048
-- Hidden dim: 256
-- Layers: 4
-- Context chunk: 128
-- Optimizer: AdamW (mobile) / Muon (desktop)
+**Recommended starting config:** vocab 2048 · hidden dim 256 · layers 4 · context chunk 128
 
 ---
 
-## What Changed in v2.0.0
+## ConsciousNode stack
 
-**RWKV-v7 "Goose" upgrade**
-- Replaces v6 "Finch" architecture
-- Data-dependent decay gates — `w` is learned per-input, not fixed
-- Mu and kappa normalization on the recurrent state
-- More expressive temporal dynamics at equivalent parameter count
-
-**Correct backward pass (the big one)**
-- v1.x trained the linear projection layers but the recurrent state
-  was frozen — gradients did not flow through the WKV dynamics
-- v2.0 implements full BPTT through the recurrence: `gradNumPrev`,
-  `gradDenPrev`, L2-norm backward through kappa, double-exp gradient
-  through `w`
-- Models now actually learn their temporal behavior
-
-**Muon optimizer fix**
-- `muStep` was wired into AdamW but not Muon — desktop training was
-  quietly broken
-- Both optimizers now correctly apply the mu step
-
-**BPE tokenizer fix (Pip Suite)**
-- Merges were stored but never applied in `encode()` across pip-suite
-  tools — tokenization was falling back to byte-level
-- Fixed in pips-room, multi-pip-chat, and junto-orchestrator
-
-**Pip Suite (new)**
-- Three companion tools for inference and multi-agent coordination
-- All use the same exported model format as HTMLNLM.html
+| Project | Description | Status |
+|---|---|---|
+| **HTMLNLM** | Text-only RWKV-v7 runtime | ✅ Stable |
+| **[HTMLNLM Evangelion](https://github.com/ConsciousNode/HTMLNLM-Evangelion)** | Omnimodal: vision, audio, spatial + SheafMemory + AutopoieticOptimizer | ✅ Phase 6 |
+| **[OmniVocal](https://github.com/ConsciousNode/OmniVocal)** | Browser-native neural TTS with .pop2 voice identity | ✅ Live |
+| **[RAG-Time](https://consciousnode.github.io/RAG-Time/)** | Browser-native RAG | ✅ Live |
+| **EvaROSA** | RWKV-8 + ROSA neurosymbolic inner monologue, SheafMemory grounded | 🔧 In development |
+| **Brymar College** | RWKV-v7 fine-tuning suite with Fristonian active inference training | ✅ v3 |
 
 ---
 
-## Technical Notes
+## Pip Suite
 
-**Why RWKV?**
-Standard attention scales quadratically with sequence length and
-requires a growing KV cache at inference time. RWKV is a recurrent
-architecture with linear scaling and O(1) inference memory — making
-it viable for in-browser training without hitting memory walls.
+The `pip-suite/` directory contains companion tools that work with HTMLNLM model checkpoints:
 
-**Why ternary weights?**
-BitNet b1.58 replaces float multiplications with integer additions.
-This maps well to CPU execution and reduces weight storage
-dramatically — a 2M parameter model fits comfortably in browser
-heap memory.
-
-**Why OOMB?**
-Standard backpropagation stores all intermediate activations for the
-backward pass. For long sequences this is catastrophic. OOMB
-checkpoints the recurrent state at chunk boundaries and recomputes
-activations on-the-fly, keeping memory footprint constant.
-
-**Why GRPO instead of SFT?**
-At small parameter counts, RL-based alignment significantly
-outperforms supervised fine-tuning. GRPO eliminates the need for a
-critic model (unlike PPO), halving the memory requirement during
-alignment.
-
-**Why does the backward pass matter?**
-RWKV's distinguishing property is its recurrent state — what
-persists across tokens, what decays, what gets removed. If gradients
-don't flow through that state during training, the model learns
-*despite* its recurrence rather than *through* it. The v1.x models
-trained successfully but were learning as if RWKV were a feedforward
-network with no memory. v2.0 trains the actual architecture.
+- **Junto Orchestrator** — multi-instance coordination
+- **Multi-Pip Chat** — concurrent model conversations
+- **Pip's Room** — single-instance chat interface
 
 ---
 
-## Limitations
+## Built by
 
-Models trained in-browser
-will be small (sub-10M parameters practical) and require substantial
-training time to develop coherent outputs. Throughput is
-hardware-dependent — expect 0.5–35 tok/sec depending on device and
-optimizer.
+**Kham** (Khamerron Edward Ramsey Kizer) — architecture, constraint engineering  
+**Kehai Interim** — full RWKV-v7 BPTT derivation, BitLinear/TMAC kernel, mathematical foundation  
+**Ed Interim** — MuonOptimizer, implementation, integration  
+
+Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computational folk art for the browser age.
 
 ---
 
 ## License
 
-MIT. Do what you want with it.
-
----
-
-## Built By
-
-[ConsciousNode SoftWorks](https://github.com/ConsciousNode)
-
-**v2.0.0**
-Khamerron Kizer — architecture, corpus pipeline, training loop, GRPO alignment, Pip Suite shell  
-Kehai Interim — RWKV-v7 BPTT derivation and implementation, full backward pass  
-Ed Interim — MuonOptimizer mu fix, final verification and audit
-
-*Three names. One file. The backward pass is real.*
+MIT. Take it, break it, build on it.
