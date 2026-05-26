@@ -15,7 +15,7 @@ Built by [ConsciousNode SoftWorks](https://consciousnode.github.io) on the xinu 
 
 ---
 
-> **Successor available:** [**HTMLNLM Evangelion**](https://github.com/ConsciousNode/HTMLNLM-Evangelion) extends this work with omnimodal input (vision, audio, spatial), SheafMemory topological contradiction detection, BooleanPhaseDynamics, AutopoieticOptimizer self-correction, and RIFT Endospace visualization. HTMLNLM remains the stable text-only runtime.
+> **Successors:** [**HTMLNLM Evangelion**](https://github.com/ConsciousNode/HTMLNLM-Evangelion) adds omnimodal input, SheafMemory, BooleanPhaseDynamics, AutopoieticOptimizer, and RIFT Endospace. [**EvaROSA**](https://github.com/ConsciousNode/EvaROSA) adds ROSA neurosymbolic inner monologue. [**Simulacra**](https://github.com/ConsciousNode/Simulacra) is the RWKV-v8 clean break — ROSA replaces WKV as the sequence mechanism. HTMLNLM remains the stable text-only runtime.
 
 ---
 
@@ -91,7 +91,8 @@ Muon / AdamW Optimizer
 | **[HTMLNLM Evangelion](https://github.com/ConsciousNode/HTMLNLM-Evangelion)** | Omnimodal: vision, audio, spatial + SheafMemory + AutopoieticOptimizer | ✅ Phase 6 |
 | **[OmniVocal](https://github.com/ConsciousNode/OmniVocal)** | Browser-native neural TTS with .pop2 voice identity | ✅ Live |
 | **[RAG-Time](https://consciousnode.github.io/RAG-Time/)** | Browser-native RAG | ✅ Live |
-| **EvaROSA** | RWKV-8 + ROSA neurosymbolic inner monologue, SheafMemory grounded | 🔧 In development |
+| **[EvaROSA](https://github.com/ConsciousNode/EvaROSA)** | RWKV-v7 + ROSA neurosymbolic inner monologue, SheafMemory grounded | ✅ v1 |
+| **[Simulacra](https://github.com/ConsciousNode/Simulacra)** | RWKV-v8 · ROSA as primary sequence mechanism · WKV removed | ✅ Live |
 | **Brymar College** | RWKV-v7 fine-tuning suite with Fristonian active inference training | ✅ v3 |
 
 ---
