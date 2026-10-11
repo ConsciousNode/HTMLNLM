@@ -727,6 +727,10 @@ class BitLinear {
   pack() {
     if (this.dirty) {
       this.gamma = TMAC.quantizeWeights(this.weight, this.packed);
+      // 2026-10-11: keep the ternary values the forward actually uses, for an exact backward
+      if (!this.q || this.q.length !== this.weight.length) this.q = new Int8Array(this.weight.length);
+      const ig = 1 / this.gamma, W = this.weight, q = this.q;
+      for (let i = 0; i < W.length; i++) { const t = Math.round(W[i] * ig); q[i] = t > 1 ? 1 : (t < -1 ? -1 : t); }
       this.dirty = false;
     }
   }
@@ -739,17 +743,21 @@ class BitLinear {
   }
 
   backward(gradOut, x) {
-    // One sequential pass per weight row computes both the weight gradient and
-    // the input gradient (the old version walked weight columns: ~2x slower).
-    const inDim = this.inDim, W = this.weight, G = this.grad;
+    // Weight gradient: straight-through estimator (dL/dW = g·xᵀ, applied to the float master weights).
+    // Input gradient (2026-10-11 fix): must use what the forward used, γ·Q(W)ᵀg. It used the float
+    // weights Wᵀg, which differ from γ·Q(W) by the whole quantization error, so every layer passed
+    // back the gradient of a network that wasn't the one running (measured in Evangelion: ternary
+    // training at the default LR stalled at unigram loss; fixed, it out-learned the float model).
+    this.pack();
+    const inDim = this.inDim, G = this.grad, q = this.q, gm = this.gamma;
     const gradIn = new Float32Array(inDim);
     for (let o = 0; o < this.outDim; o++) {
       const go = gradOut[o];
       if (go === 0) continue;
-      const ro = o * inDim;
+      const ro = o * inDim, gq = go * gm;
       for (let i = 0; i < inDim; i++) {
         G[ro + i] += go * x[i];
-        gradIn[i] += W[ro + i] * go;
+        gradIn[i] += q[ro + i] * gq;
       }
     }
     return gradIn;

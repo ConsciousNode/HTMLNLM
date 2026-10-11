@@ -12,7 +12,12 @@ const M = ctx.M;
 let seed = 3;
 ctx.Math.random = Math.random = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 // STE semantics: backward is the gradient of the float model, so check against a float forward.
-M.BitLinear.prototype.forward = function (x) { const o = new Float64Array(this.outDim); for (let r = 0; r < this.outDim; r++) { let a = 0; for (let i = 0; i < this.inDim; i++) a += this.weight[r * this.inDim + i] * x[i]; o[r] = a; } return o; };
+// Default: STE semantics, every weight checked against a float forward + float backward.
+// TERNARY=1: the REAL ternary forward; everything upstream of the ternary layers must then be exact,
+// which only holds if each BitLinear passes back γ·Q(W)ᵀg (the 2026-10-11 fix).
+const TERNARY = !!process.env.TERNARY;
+if (!TERNARY) M.BitLinear.prototype.backward = function (g, x) { const gi = new Float64Array(this.inDim); for (let r = 0; r < this.outDim; r++) { if (!g[r]) continue; for (let i = 0; i < this.inDim; i++) { this.grad[r * this.inDim + i] += g[r] * x[i]; gi[i] += this.weight[r * this.inDim + i] * g[r]; } } return gi; };
+if (!TERNARY) M.BitLinear.prototype.forward = function (x) { const o = new Float64Array(this.outDim); for (let r = 0; r < this.outDim; r++) { let a = 0; for (let i = 0; i < this.inDim; i++) a += this.weight[r * this.inDim + i] * x[i]; o[r] = a; } return o; };
 const cfg = { vocab: 20, dim: 12, layers: 2 };
 const m = new M.LanguageModel(cfg);
 for (const b of m.blocks) { for (let i = 0; i < b.W_x_w.weight.length; i++) b.W_x_w.weight[i] *= 0.3; b.mu_r.fill(0.4); b.mu_k.fill(0.6); }
@@ -32,7 +37,10 @@ for (let t = outs.length - 2; t >= 0; t--) g = m.backward(new Float32Array(cfg.v
 const minDen = Math.min(...outs.flatMap(o => o.caches.blocks.map(c => Math.min(...Array.from(c.den_new, Math.abs)))));
 console.log(`min |den| = ${minDen.toExponential(1)}`);
 const eps = 1e-6; let fails = 0, worst = 1;
+const bitWeights = new Set();
+(function scan(o, seen) { if (!o || typeof o !== 'object' || seen.has(o) || ArrayBuffer.isView(o)) return; seen.add(o); if (o instanceof M.BitLinear) { bitWeights.add(o.weight); return; } for (const k of Object.keys(o)) scan(o[k], seen); })(m, new Set());
 function check(label, W, G) {
+  if (TERNARY && bitWeights.has(W)) return;   // STE weight gradient: checked in float mode
   let dot = 0, na = 0, nn = 0;
   for (let i = 0; i < W.length; i++) { const o = W[i]; W[i] = o + eps; const a = loss(); W[i] = o - eps; const b = loss(); W[i] = o; const num = (a - b) / (2 * eps); dot += G[i] * num; na += G[i] * G[i]; nn += num * num; }
   if (nn < 1e-14) { console.log(`${label.padEnd(16)} (unused by the forward pass)`); return; }
