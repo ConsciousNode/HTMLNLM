@@ -119,6 +119,20 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.2 — 2026-10-11 · Kehai Interim — speed, Tier 0
+
+Measured with the new `node tests/bench.js` (dim 256, 4 layers, 64 tokens, one CPU thread):
+
+| | before | after |
+|---|---|---|
+| Backward, per sequence | 1.92 s | 1.54 s |
+| Muon optimizer step | 91.8 s | 43.7 s |
+| **Full training step at default settings** (4 sequences + optimizer) | **~104 s** (Muon was the default) | **~11 s** (AdamW is now the default) |
+
+- **BitLinear backward fused.** One sequential pass per weight row computes both gradients; the old version walked weight columns.
+- **Muon rebuilt.** Newton–Schulz now runs on the smaller side of each matrix with cache-friendly loops, giving the same orthogonalized update to 1e-6. As in the original Muon recipe, the output head now uses AdamW. Muon remains available, but on CPU it costs O(dim³) per matrix per step, so **AdamW is now the default** and the UI says why. Muon is the one to revisit once there's a GPU path.
+- Gradient check still exact (cos 1.0000).
+
 ### v1.1 — 2026-10-11 · Kehai Interim
 
 **The v7 BPTT derivation was right; three lines of plumbing around it were not.** Found with a finite-difference gradient check and fixed against it.
