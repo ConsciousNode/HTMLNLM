@@ -117,6 +117,27 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ---
 
+## Changelog
+
+### v1.1 — 2026-10-11 · Kehai Interim
+
+**The v7 BPTT derivation was right; three lines of plumbing around it were not.** Found with a finite-difference gradient check and fixed against it.
+
+- **Residual gradient restored.** The block returned only the gradient through `ln1`, dropping the residual path (`h = x + tmix_out`). Every lower layer saw less signal, down to 11–45% of the true gradient size in layer 0.
+- **Channel mix now reaches the time mix.** `ln2.backward()` was computed and thrown away, so the FFN's gradient never flowed into `W_o`, the WKV path or anything below.
+- **Embedding gradient order fixed.** The embedding was credited *before* `ln_in.backward`, so it received ~2% of its true gradient and barely trained.
+- **Token-shift BPTT added.** `prevX`/`prevX2` now pass gradient to the previous timestep, alongside the existing `num`/`den` state gradients.
+
+Result: every weight, every `mu` and the embedding match finite differences (cosine ≥ 0.9997) over a 3-step sequence. Same 30 training steps in the browser on a repeating pattern: loss 5.80 → **3.49** (was 5.75 → 4.22).
+
+**A numerical note.** `wkv = num / (|den| + 1e-8)`, and `den` can approach zero (the removal term can push it there). When it does, gradients spike. The test prints the smallest `|den|` and warns when finite differences become untrustworthy. Worth watching if training ever goes unstable.
+
+**Tests (new):** `node tests/gradcheck.js`, zero dependencies, runs on the classes in `HTMLNLM.html`.
+
+**Unchanged:** `W_x_rx2` / `W_x_kx2` are allocated and optimized but never used by the forward pass (Simulacra wires them in).
+
+---
+
 ## License
 
 MIT. Take it, break it, build on it.

@@ -1606,22 +1606,28 @@ class RWKVv7Block {
     for (let i = 0; i < dim; i++) gradPreSigR2[i] = gradR2[i] * r2[i] * (1 - r2[i]);
     const gradRx2 = this.Wr2.backward(gradPreSigR2, rx2);
 
+    const gradPrevX2 = new Float32Array(dim);
     for (let i = 0; i < dim; i++) {
       const diff2 = prevX2[i] - h_ln[i];
       this.mu_r_grad[i] += gradRx2[i] * diff2;
       this.mu_k_grad[i] += (gradKx2fromWk2 ? gradKx2fromWk2[i] : 0) * diff2;
+      // token shift: rx2 = h_ln + mu·(prevX2 − h_ln) → mu of the gradient goes to the previous step
+      gradPrevX2[i] = gradRx2[i] * this.mu_r[i] + (gradKx2fromWk2 ? gradKx2fromWk2[i] * this.mu_k[i] : 0);
     }
 
     // ── LN2 BACKWARD ──────────────────────────────────────────────────────
+    // v1.1: h_ln is also the next step's prevX2, and ln2's result now feeds gradH
+    // (it was computed and discarded, so the channel mix never reached the time mix).
     const gradHln = new Float32Array(dim);
     for (let i = 0; i < dim; i++) {
       gradHln[i] += gradRx2[i] * (1 - this.mu_r[i]);
       if (gradKx2fromWk2) gradHln[i] += gradKx2fromWk2[i] * (1 - this.mu_k[i]);
+      if (gradStateIn && gradStateIn.prevX2) gradHln[i] += gradStateIn.prevX2[i];
     }
-    this.ln2.backward(gradHln, caches.ln2);
+    const gradHfromLn2 = this.ln2.backward(gradHln, caches.ln2);
 
     const gradH = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradH[i] = gradOut[i];
+    for (let i = 0; i < dim; i++) gradH[i] = gradOut[i] + gradHfromLn2[i];
 
     // ── TIME MIX BACKWARD ─────────────────────────────────────────────────
     const gradGated = this.W_o.backward(gradH, gated);
@@ -1716,7 +1722,11 @@ class RWKVv7Block {
 
     // ── TOKEN SHIFT BACKWARD (time mix) ───────────────────────────────────
     const gradXln = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) gradXln[i] += gradXlnFromG[i];
+    const gradPrevX = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) {
+      gradXln[i] += gradXlnFromG[i];
+      if (gradStateIn && gradStateIn.prevX) gradXln[i] += gradStateIn.prevX[i];   // x_ln is next step's prevX
+    }
 
     const shifts = [
       [gradXrFromR,    this.mu_r,     this.mu_r_grad   ],
@@ -1731,12 +1741,21 @@ class RWKVv7Block {
       for (let i = 0; i < dim; i++) {
         muGrad[i]   += gradXs[i] * (prevX[i] - x_ln[i]);
         gradXln[i]  += gradXs[i] * (1 - mu[i]);
+        gradPrevX[i] += gradXs[i] * mu[i];
       }
     }
 
+    // v1.1: return dL/d(block input) — ln1 applied AND the residual path
+    // (h = x + tmix_out) included. Previously only the ln1 path was returned,
+    // so the residual gradient was lost and each lower layer saw less signal.
+    const gradXfromLn1 = this.ln1.backward(gradXln, caches.ln1);
+    const gradX = new Float32Array(dim);
+    for (let i = 0; i < dim; i++) gradX[i] = gradH[i] + gradXfromLn1[i];
+
     return {
-      gradBlockIn:  gradXln,
-      gradStatePrev: { num: gradNumPrev, den: gradDenPrev }
+      gradBlockIn:  gradX,
+      lnApplied:    true,
+      gradStatePrev: { num: gradNumPrev, den: gradDenPrev, prevX: gradPrevX, prevX2: gradPrevX2 }
     };
   }
 }
@@ -1805,17 +1824,20 @@ class LanguageModel {
       const result = this.blocks[i].backward(gradIn, caches.blocks[i], stateIn);
       if (result && result.gradBlockIn) {
         gradStatesOut[i] = result.gradStatePrev;
-        gradIn = this.blocks[i].ln1.backward(result.gradBlockIn, caches.blocks[i].ln1);
+        gradIn = result.lnApplied ? result.gradBlockIn
+                                  : this.blocks[i].ln1.backward(result.gradBlockIn, caches.blocks[i].ln1);
       } else {
         // Fallback for RWKVv6 blocks (old signature)
         gradIn = this.blocks[i].ln1.backward(gradIn, caches.blocks[i].ln1);
       }
     }
+    // v1.1: ln_in first, THEN the embedding (the order was reversed, so the
+    // embedding received the post-LayerNorm gradient — ~2% of its true size).
+    gradIn = this.ln_in.backward(gradIn, caches.lnIn);
     const embBase = caches.tokenId * this.cfg.dim;
     for (let i = 0; i < this.cfg.dim; i++) {
       this.embGrad[embBase + i] += gradIn[i];
     }
-    gradIn = this.ln_in.backward(gradIn, caches.lnIn);
     return { gradIn, gradStatesOut };
   }
 
