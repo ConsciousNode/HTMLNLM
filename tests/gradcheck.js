@@ -7,11 +7,12 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'HTMLNLM.html'), 'utf8');
 const cut = (a, b) => { const i = src.indexOf(a), j = src.indexOf(b, i); if (i < 0 || j < 0) throw new Error('marker ' + a); return src.slice(i, j); };
 const code = [cut('const CONFIG = {', '\nfunction sysLog'), cut('class TMAC {', 'class AdamOptimizer'), cut('class RWKVv7Block {', 'const JuntoNode'),
   'this.M = { BitLinear, LanguageModel };'].join('\n');
-const ctx = { Math, Float32Array, Int8Array, Uint8Array, Array, Object, console }; vm.createContext(ctx); vm.runInContext(code, ctx);
+const ctx = { Math, Float32Array: Float64Array, Int8Array, Uint8Array, Array, Object, console }; vm.createContext(ctx); vm.runInContext(code, ctx);
 const M = ctx.M;
-let seed = 5;   // a well-conditioned draw: see the |den| guard below ctx.Math.random = Math.random = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+let seed = 3;
+ctx.Math.random = Math.random = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 // STE semantics: backward is the gradient of the float model, so check against a float forward.
-M.BitLinear.prototype.forward = function (x) { const o = new Float32Array(this.outDim); for (let r = 0; r < this.outDim; r++) { let a = 0; for (let i = 0; i < this.inDim; i++) a += this.weight[r * this.inDim + i] * x[i]; o[r] = a; } return o; };
+M.BitLinear.prototype.forward = function (x) { const o = new Float64Array(this.outDim); for (let r = 0; r < this.outDim; r++) { let a = 0; for (let i = 0; i < this.inDim; i++) a += this.weight[r * this.inDim + i] * x[i]; o[r] = a; } return o; };
 const cfg = { vocab: 20, dim: 12, layers: 2 };
 const m = new M.LanguageModel(cfg);
 for (const b of m.blocks) { for (let i = 0; i < b.W_x_w.weight.length; i++) b.W_x_w.weight[i] *= 0.3; b.mu_r.fill(0.4); b.mu_k.fill(0.6); }
@@ -21,15 +22,16 @@ const run = () => { let st = m.getEmptyState(); const o = []; for (const t of se
 const loss = () => ce(run().at(-1).logits);
 m.zeroGrad(); m.embGrad.fill(0);
 const outs = run();
-const p = Float32Array.from(outs.at(-1).logits); let mx = -1e9; for (const v of p) mx = Math.max(mx, v); let s = 0;
+const p = Float64Array.from(outs.at(-1).logits); let mx = -1e9; for (const v of p) mx = Math.max(mx, v); let s = 0;
 for (let i = 0; i < p.length; i++) { p[i] = Math.exp(p[i] - mx); s += p[i]; } for (let i = 0; i < p.length; i++) p[i] /= s; p[target] -= 1;
 let g = m.backward(p, outs.at(-1).caches, null).gradStatesOut;
 for (let t = outs.length - 2; t >= 0; t--) g = m.backward(new Float32Array(cfg.vocab), outs[t].caches, g).gradStatesOut;
-// Finite differences are only trustworthy when wkv = num/|den| is well conditioned.
-// If any |den| is tiny, a FAIL below may be the measuring stick, not the code.
+// The model runs in float64 here (Float32Array is mapped to Float64Array) with a
+// tiny step: wkv = num/|den| is sharply curved when |den| is small, and a float32
+// check with a 1e-3 step mistakes that curvature for a wrong gradient.
 const minDen = Math.min(...outs.flatMap(o => o.caches.blocks.map(c => Math.min(...Array.from(c.den_new, Math.abs)))));
-console.log(`min |den| = ${minDen.toExponential(1)}${minDen < 5e-3 ? '  (WARNING: ill-conditioned — pick another seed)' : ''}`);
-const eps = 1e-3; let fails = 0, worst = 1;
+console.log(`min |den| = ${minDen.toExponential(1)}`);
+const eps = 1e-6; let fails = 0, worst = 1;
 function check(label, W, G) {
   let dot = 0, na = 0, nn = 0;
   for (let i = 0; i < W.length; i++) { const o = W[i]; W[i] = o + eps; const a = loss(); W[i] = o - eps; const b = loss(); W[i] = o; const num = (a - b) / (2 * eps); dot += G[i] * num; na += G[i] * G[i]; nn += num * num; }

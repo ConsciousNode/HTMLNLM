@@ -128,9 +128,9 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 - **Embedding gradient order fixed.** The embedding was credited *before* `ln_in.backward`, so it received ~2% of its true gradient and barely trained.
 - **Token-shift BPTT added.** `prevX`/`prevX2` now pass gradient to the previous timestep, alongside the existing `num`/`den` state gradients.
 
-Result: every weight, every `mu` and the embedding match finite differences (cosine ≥ 0.9997) over a 3-step sequence. Same 30 training steps in the browser on a repeating pattern: loss 5.80 → **3.49** (was 5.75 → 4.22).
+Result: every weight, every `mu` and the embedding match finite differences (cosine 1.0000, float64 check) over a 3-step sequence. Same 30 training steps in the browser on a repeating pattern: loss 5.80 → **3.49** (was 5.75 → 4.22).
 
-**A numerical note.** `wkv = num / (|den| + 1e-8)`, and `den` can approach zero (the removal term can push it there). When it does, gradients spike. The test prints the smallest `|den|` and warns when finite differences become untrustworthy. Worth watching if training ever goes unstable.
+**A numerical note.** `wkv = num / (|den| + 1e-8)`, and `den` can approach zero (the removal term can push it there). When it does, gradients spike. That curvature is also why the gradient check runs the model in float64 with a tiny step: in float32 with a coarse step it mistakes curvature for a wrong gradient. Worth watching if training ever goes unstable.
 
 **Tests (new):** `node tests/gradcheck.js`, zero dependencies, runs on the classes in `HTMLNLM.html`.
 
