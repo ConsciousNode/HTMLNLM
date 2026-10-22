@@ -15,3 +15,15 @@ node --max-old-space-size=6000 tests/real/parity.js rwkv7-g1d-0.1b.pth run toks.
 ```
 
 Result on 2026-10-22: 14 prompt tokens, max |Δlogit| **3.3e-5** (engine float32 vs reference float64), greedy pick agrees 14/14.
+
+## Repetition control (v1.5)
+
+```sh
+# Multi-Pip Chat's loop, anti-repeat off (0) vs on (0.4), same seed; prints the chat and a score
+node --max-old-space-size=3000 tests/real/repetition.js rwkv7-g1d-0.1b.pth 0   7 8
+node --max-old-space-size=3000 tests/real/repetition.js rwkv7-g1d-0.1b.pth 0.4 7 8
+# Pip's Room in headless Chromium with the real checkpoint (needs Playwright)
+node tests/real/pips-room-e2e.js rwkv7-g1d-0.1b.pth
+```
+
+Score = repeated 4-word phrases across the chat (an exact-line count missed the real failure: near-identical lines that differ by a word). Results on 2026-10-22, 8 turns: seed 7 32% → 0%, seed 23 3% → 0%, seed 11 0% → 0%.

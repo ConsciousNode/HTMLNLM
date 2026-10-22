@@ -105,10 +105,12 @@ The `pip-suite/` directory contains companion tools that work with HTMLNLM model
 - **Multi-Pip Chat** — concurrent model conversations
 - **Pip's Room** — single-instance chat interface
 
-**Real RWKV-7 guests (v1.4).** Junto and Multi-Pip Chat also load **official RWKV-7 "Goose" (x070) checkpoints**: drop a `.pth` straight from [BlinkDL's releases](https://huggingface.co/BlinkDL) (no PyTorch, no conversion) or a `.safetensors`. They run on the real architecture (per-head matrix memory) with the official **RWKV World tokenizer**, both embedded in the page, so each page is still one file that works offline. Old `.pip` / `.json` models load exactly as before, side by side with real ones.
+**Real RWKV-7 guests (v1.4, Pip's Room since v1.5).** Junto, Multi-Pip Chat and Pip's Room also load **official RWKV-7 "Goose" (x070) checkpoints**: drop a `.pth` straight from [BlinkDL's releases](https://huggingface.co/BlinkDL) (no PyTorch, no conversion) or a `.safetensors`. They run on the real architecture (per-head matrix memory) with the official **RWKV World tokenizer**, both embedded in the page, so each page is still one file that works offline. Old `.pip` / `.json` models load exactly as before, side by side with real ones.
 
 - **Sizes:** the 0.1B (~190M params, ~760 MB in memory) is the practical one in a browser tab; the 0.4B (~450M, ~1.8 GB) is tight. Measured on a cloud Xeon (one thread), a 0.1B-shaped model takes **~360 ms per token**; expect a similar order on a desktop CPU.
 - **Shared base:** load the same checkpoint twice and both nodes/pips share one copy of the weights, each with its own state.
+- **Repetition control (v1.5):** real models get a presence + frequency penalty that fades over time (the ChatRWKV approach), so they don't get stuck saying the same thing. Junto has *Presence* / *Frequency* controls, Multi-Pip Chat has *Anti-repeat*; `0` turns it off. It's never applied to `.pip` models (on a small char-level vocabulary it would punish every letter).
+- **Meet Goose & Gander:** the [Goose & Gander release](https://github.com/ConsciousNode/HTMLNLM/releases/tag/goose-gander) has the 0.1B checkpoint we test against, unmodified, with its Apache-2.0 license. Drop it into Multi-Pip Chat twice.
 - The engine lives in `engine/rwkv7-engine.js` (from Brymar College v4.0.0's `model/rwkv7.js`) and is embedded into the pages by `python3 engine/embed.py`. Edit the engine there, not in the pages.
 
 ---
@@ -124,6 +126,18 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 ---
 
 ## Changelog
+
+### v1.5 — 2026-10-22 · Kehai Interim + Kham — anti-repeat, and Pip's Room meets RWKV-7
+
+- **Repetition control in Junto and Multi-Pip Chat** for real RWKV-7 checkpoints: every token already said is pushed down by *presence + frequency × count*, and the counts fade by 0.996 per token (ChatRWKV-style). Defaults 0.4 / 0.4. Junto: *Presence* and *Frequency* controls. Multi-Pip Chat: one *Anti-repeat* control, seeded with each speaker's own recent lines, so a Pip that keeps repeating itself across turns gets nudged off it while echoing the *other* speaker stays free. Not applied to `.pip` models.
+- **Multi-Pip Chat: no more empty replies.** A real model sometimes drew a line break as its very first token, which ended the turn with an empty line, and the empty line in the context made the next one likelier. A line break (or end-of-text) before anything has been said is now redrawn.
+- **Pip's Room loads official RWKV-7 checkpoints** (`.pth` / `.safetensors`), with the same embedded engine and World tokenizer as the other pages. With a real model she replies one line at a time, sees the last three exchanges (so she can follow a conversation), and has anti-repeat seeded with her own replies. Her info panel shows the checkpoint's real parameter count. `.pip` souls behave exactly as before.
+- **Pip's Room: fixed the prompt-feed bug** the other two pages lost in v1.4 (it fed tokens 0…n−2 and then token 0 again, so the last prompt token was never seen).
+- **Tests**
+  - `tests/engine-ref.js` now also checks the copy embedded in Pip's Room: max |Δlogit| **6.66e-15**, MATCH.
+  - `tests/real/repetition.js`: the Multi-Pip chat loop on a real checkpoint with the sampler taken straight from the page source, seeded, anti-repeat off vs on, scored by repeated 4-word phrases. On `rwkv7-g1d-0.1b`, 8 turns, opening *"Good evening, you two. What do frogs say at night?"*: seed 7 **32% → 0%** (off, both got stuck on "a pond with plenty of water to keep you cool" for five turns), seed 23 **3% → 0%**, seed 11 0% → 0% (with it off, that one collapsed into ever-shorter lines instead: *"They sleep." "They're asleep." "Oh." "And I'm asleep."*, which a phrase count can't see).
+  - `tests/real/pips-room-e2e.js` (needs Playwright): headless Chromium wakes Pip's Room from the real `.pth` (awake in 1.3 s, 191.03M params, vocab 65536), holds a 3-message conversation with the earlier turns in her prompt, no page errors. Asked her name, she said *"I'm Cleo, the frog-eating robot."*
+  - All three pages pass a JS syntax check and load clean in headless Chromium; the tracker's arithmetic checks out (a token said twice: 0.4 + 0.4 × 2 = 1.2).
 
 ### v1.4 — 2026-10-22 · Kehai Interim + Kham — real RWKV-7 in the Pip Suite
 

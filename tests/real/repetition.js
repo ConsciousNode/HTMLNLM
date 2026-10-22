@@ -73,5 +73,9 @@ for (let t = 0; t < TURNS; t++) {
   history.push({ sender: name, text });
   console.log(`${repeat ? '  ↺ ' : '    '}${name}: ${text}`);
 }
+// Exact repeated lines miss the real failure (near-identical lines that differ by a word),
+// so the score is repeated 4-word phrases across the whole chat.
 const words = history.slice(1).map(m => norm(m.text)).join(' ').split(' ').filter(Boolean);
-console.log(`RESULT penalty=${PEN} seed=${SEED} self-repeated-lines=${selfRepeats}/${TURNS} distinct-words=${new Set(words).size}/${words.length}`);
+const seen = new Set(); let rep4 = 0, n4 = 0;
+for (let i = 0; i + 3 < words.length; i++) { const g = words.slice(i, i + 4).join(' '); n4++; if (seen.has(g)) rep4++; seen.add(g); }
+console.log(`RESULT penalty=${PEN} seed=${SEED} repeated-4-word-phrases=${rep4}/${n4} (${(100 * rep4 / Math.max(1, n4)).toFixed(0)}%) exact-repeat-lines=${selfRepeats}/${TURNS} distinct-words=${new Set(words).size}/${words.length}`);
