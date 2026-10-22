@@ -127,6 +127,12 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.5.2 — 2026-10-22 · Kehai Interim + Kham — no hard-coded names, and you can see the loops working
+
+- **No proper name is built in.** Pip's Room is named for Pip, but the resident is whoever's in it. The name field starts empty; leave it empty and the resident picks their own name on waking (the real 0.1B, twice: *Azazel*, *James*). Type a name to give one instead, or change it any time from the same field. Fallbacks say *Resident*, and private entries say *"kept this one private"*.
+- **The loops were running, you just couldn't see them** (the Inner Life panel sits collapsed under the input, off-screen on a phone). Now each shared thought pops up for a few seconds (💭 thought, 🌙 dream, ❓ wondering, 🪞 reflecting, 📷 remembering, 🎯 new goal, 🗂 summary), the panel header counts what's new, and tapping a loop letter shows the last thing that loop produced.
+- **Tested** in headless Chromium with the real checkpoint and Kham's own exported soul file (44 memories): imported before the model, restored 40 chat bubbles and 13 inner-life entries, renamed from the field, ran a loop, toasts and taps worked, no page errors.
+
 ### v1.5.1 — 2026-10-22 · Kehai Interim + Kham — Pip's Room: the loops actually run, and she comes home as herself
 
 Kham noticed none of Pip's Room's autonomous loops did anything. Why: *Inner Voice* and *Dreams* only ran when their **Share** toggles were on, and both start off; *Consolidate* read a conversation list that doesn't exist and crashed every five minutes; *Reflection* (as a loop), *Goals*, *Self-Prompt* and *Memory* had no code behind them at all.
