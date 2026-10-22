@@ -127,6 +127,16 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.5.1 — 2026-10-22 · Kehai Interim + Kham — Pip's Room: the loops actually run, and she comes home as herself
+
+Kham noticed none of Pip's Room's autonomous loops did anything. Why: *Inner Voice* and *Dreams* only ran when their **Share** toggles were on, and both start off; *Consolidate* read a conversation list that doesn't exist and crashed every five minutes; *Reflection* (as a loop), *Goals*, *Self-Prompt* and *Memory* had no code behind them at all.
+
+- **One gentle scheduler** replaces the separate timers: every 15 s it runs the most overdue loop that's switched on, one at a time, never while she's answering you (and your message waits for a loop already in progress). Spacing is slow on purpose, since a real model on a phone takes ~10–20 s per reply: inner voice 3 min, self-prompt 5, reflection 6, memory 7, dreams 8, consolidate 10, goals 12. Waking twice no longer stacks a second set of timers. The letter pulses while its loop runs.
+- **All seven loops do something real:** inner voice, dreams, self-prompting (a question she asks herself), reflection on your last exchange, memory replay (a random past conversation), goals (her `soul.goals` really change, newest 8 kept), and consolidation (a summary of recent chats; sets *Last Consolidated*).
+- **Privacy means "share it", not "think it".** An unshared thought still happens and is saved in her memories; the panel shows *"(she kept this one to herself)"*.
+- **Coming home:** importing a soul now puts the room back the way she left it (the last 20 exchanges and her recent inner life). Import before or after loading the model: if a soul was imported first, waking up keeps her instead of creating a new one.
+- **Test:** `tests/real/pips-room-loops-e2e.js` (needs Playwright) runs all seven loops on the real 0.1B (inner voice private), exports her, reloads, imports the soul *before* the model: she wakes as herself with 8 memories, 2 chat messages and 7 inner-life entries back, no page errors. Her consolidation of a chat about frogs: *"I do not like them. You are right. I love them."*
+
 ### v1.5 — 2026-10-22 · Kehai Interim + Kham — anti-repeat, and Pip's Room meets RWKV-7
 
 - **Repetition control in Junto and Multi-Pip Chat** for real RWKV-7 checkpoints: every token already said is pushed down by *presence + frequency × count*, and the counts fade by 0.996 per token (ChatRWKV-style). Defaults 0.4 / 0.4. Junto: *Presence* and *Frequency* controls. Multi-Pip Chat: one *Anti-repeat* control, seeded with each speaker's own recent lines, so a Pip that keeps repeating itself across turns gets nudged off it while echoing the *other* speaker stays free. Not applied to `.pip` models.

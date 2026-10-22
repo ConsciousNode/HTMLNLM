@@ -263,6 +263,8 @@ header h1 {
   background: var(--accent-glow);
   box-shadow: 0 0 8px var(--accent-glow);
 }
+.loop-indicator.running { animation: loop-pulse 1s ease-in-out infinite; }
+@keyframes loop-pulse { 50% { box-shadow: 0 0 16px var(--accent); transform: scale(1.12); } }
 
 #memory-stats {
   margin-top: 16px;
@@ -550,6 +552,10 @@ header h1 {
 .inner-life-entry.reflection { border-left-color: #8b5cf6; }
 .inner-life-entry.inner_voice { border-left-color: #06b6d4; }
 .inner-life-entry.self_prompt { border-left-color: #10b981; }
+.inner-life-entry.goal { border-left-color: #f59e0b; }
+.inner-life-entry.memory { border-left-color: #ec4899; }
+.inner-life-entry.consolidation { border-left-color: #94a3b8; }
+.inner-life-entry.private .inner-life-text { font-style: italic; opacity: 0.6; }
 
 .inner-life-type {
   font-size: 10px;
@@ -2309,7 +2315,7 @@ function formatTimeAgo(date) {
   return Math.floor(hours / 24) + 'd ago';
 }
 
-function addMessage(text, sender) {
+function addMessage(text, sender, ts) {
   const area = document.getElementById('conversation-area');
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
@@ -2323,7 +2329,7 @@ function addMessage(text, sender) {
   
   const timeEl = document.createElement('div');
   timeEl.className = 'message-timestamp';
-  timeEl.textContent = new Date().toLocaleTimeString();
+  timeEl.textContent = new Date(ts || Date.now()).toLocaleTimeString();
   
   msg.appendChild(senderEl);
   msg.appendChild(textEl);
@@ -2350,7 +2356,7 @@ function hideTypingIndicator() {
 function addInnerLifeEntry(type, text, metadata = {}) {
   const content = document.getElementById('inner-life-content');
   const entry = document.createElement('div');
-  entry.className = `inner-life-entry ${type}`;
+  entry.className = `inner-life-entry ${type}${metadata.private ? ' private' : ''}`;
   
   const typeEl = document.createElement('div');
   typeEl.className = 'inner-life-type';
@@ -2422,6 +2428,7 @@ async function handleUserMessage() {
   
   showTypingIndicator();
   App.isGenerating = true;
+  while (App.loopBusy) await new Promise(r => setTimeout(r, 200));   // let a running loop finish first
   
   const startTime = Date.now();
   const response = await generateResponse(prompt, 80, 0.85);
@@ -2449,7 +2456,7 @@ async function handleUserMessage() {
   input.focus();
   App.isGenerating = false;
   
-  if (App.privacy.reflections) {
+  if (App.privacy.reflections && App.loopStates.reflection) {
     addInnerLifeEntry('reflection', `Reflected on: "${text.substring(0, 30)}..."`, { duration });
   }
 }
@@ -2507,8 +2514,11 @@ function wakeUp(cfg, version, nParams) {
   setSoulConsole('Creating soul...');
   updateWakingProgress(90);
   
-  const name = document.getElementById('pip-name').value || 'Pip';
-  App.soul = createSoul(name);
+  // If a soul was imported before the model was loaded, she wakes up as herself.
+  if (!App.soul) {
+    const name = document.getElementById('pip-name').value || 'Pip';
+    App.soul = createSoul(name);
+  }
   App.genesisDate = new Date(App.soul.genesisDate);
   
   document.getElementById('setting-genesis').textContent = App.genesisDate.toLocaleDateString();
@@ -2528,6 +2538,7 @@ function wakeUp(cfg, version, nParams) {
   
   App.isAwake = true;
   updatePipStatus('Awake');
+  if (App.memories.length) renderRestored();
   
   showToast(`${App.soul.name} is awake!`, 'success');
   
@@ -2627,60 +2638,94 @@ async function loadModelFile(file) {
   });
 }
 
+// ── Autonomous loops ──────────────────────────────────────────────────────────────
+// One gentle scheduler instead of seven timers: every 15 s it picks the most overdue loop
+// that's switched on and runs it, one at a time, never while she's answering you.
+// Privacy toggles mean "share it", not "think it": an unshared thought still happens and
+// is kept in her memories, it just shows up as a private entry.
+// Spacing is deliberately slow: on a phone a real model takes ~10-20 s per reply.
+const LOOPS = {
+  innerVoice:    { every: 3 * 60e3,  type: 'inner_voice', share: () => App.privacy.innerVoice, run: loopInnerVoice },
+  selfPrompting: { every: 5 * 60e3,  type: 'self_prompt', share: () => true, run: loopSelfPrompt },
+  reflection:    { every: 6 * 60e3,  type: 'reflection',  share: () => App.privacy.reflections, run: loopReflection },
+  dreams:        { every: 8 * 60e3,  type: 'dream',       share: () => App.privacy.dreams, run: loopDream },
+  memoryReplay:  { every: 7 * 60e3,  type: 'memory',      share: () => true, run: loopMemoryReplay },
+  goalEvolution: { every: 12 * 60e3, type: 'goal',        share: () => true, run: loopGoal },
+  consolidation: { every: 10 * 60e3, type: 'consolidation', share: () => true, run: loopConsolidate },
+};
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const pipName = () => App.soul?.name || 'Pip';
+const chats = () => App.memories.filter(m => m.type === 'conversation');
+const clip = (t, n) => (t || '').length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : (t || '');
+
+async function loopInnerVoice() {
+  return generateResponse(pick([`${pipName()} reflects quietly:`, 'A thought surfaces:', 'I notice something:', 'Thinking to myself:']), 40, 0.9);
+}
+async function loopDream() {
+  return generateResponse(pick(['Dreaming, I imagine:', 'In a dream, I see:', 'While resting, patterns form:']), 60, 1.1);
+}
+async function loopSelfPrompt() {
+  return generateResponse(pick(['A question I would like to explore:', 'Something I am wondering about:', 'I want to ask myself:']), 40, 0.9);
+}
+async function loopReflection() {
+  const last = chats().slice(-1)[0];
+  if (!last) return null;                                     // nothing to reflect on yet
+  return generateResponse(`Thinking back on when my friend said "${clip(last.user, 80)}", I realize`, 40, 0.8);
+}
+async function loopMemoryReplay() {
+  const all = chats();
+  if (!all.length) return null;
+  const m = pick(all);
+  const out = await generateResponse(`I remember when my friend said "${clip(m.user, 80)}" and I answered "${clip(m.response, 80)}". Looking back, I feel`, 40, 0.85);
+  return out ? `Remembering "${clip(m.user, 40)}": ${out}` : null;
+}
+async function loopGoal() {
+  const g = await generateResponse('Something I want to learn or do next:', 30, 0.9);
+  if (g && App.soul) {
+    App.soul.goals = [...(App.soul.goals || []), clip(g, 60)].slice(-8);   // her goals actually change
+  }
+  return g;
+}
+async function loopConsolidate() {
+  const recent = chats().slice(-3);
+  App.lastConsolidated = Date.now();
+  if (!recent.length) return null;
+  const text = recent.map(m => `${m.user} / ${m.response}`).join(' ');
+  return generateResponse(`Summarizing what we talked about: ${clip(text, 200)} In brief:`, 50, 0.7);
+}
+
+App.loopLast = {}; App.loopBusy = false; App.loopTimer = null;
 function startAutonomousLoops() {
-  const innerVoicePrompts = [
-    `${App.soul ? App.soul.name : 'I'} reflect quietly:`,
-    'A thought surfaces:',
-    'I notice something:',
-    'Thinking to myself:',
-    'An inner observation:'
-  ];
-  const dreamPrompts = [
-    'Dreaming, I imagine:',
-    'In a dream state, I see:',
-    'While resting, patterns form:',
-    'A dreamlike sequence:'
-  ];
-
-  if (App.loopStates.innerVoice) {
-    setInterval(async () => {
-      if (!App.isAwake || !App.privacy.innerVoice || !App.model || App.isGenerating) return;
-      const seed = innerVoicePrompts[Math.floor(Math.random() * innerVoicePrompts.length)];
-      try {
-        const thought = await generateResponse(seed, 40, 0.9);
-        addInnerLifeEntry('inner_voice', thought.trim());
-      } catch(e) {
-        addInnerLifeEntry('inner_voice', '...');
-      }
-    }, 30000 + Math.random() * 30000);
-  }
-
-  if (App.loopStates.dreams) {
-    setInterval(async () => {
-      if (!App.isAwake || !App.privacy.dreams || !App.model || App.isGenerating) return;
-      const seed = dreamPrompts[Math.floor(Math.random() * dreamPrompts.length)];
-      try {
-        const dream = await generateResponse(seed, 60, 1.1);
-        addInnerLifeEntry('dream', dream.trim());
-      } catch(e) {
-        addInnerLifeEntry('dream', '...');
-      }
-    }, 120000 + Math.random() * 60000);
-  }
-
-  if (App.loopStates.consolidation) {
-    setInterval(async () => {
-      if (!App.isAwake || !App.model || App.isGenerating) return;
-      const recentMsgs = App.conversationHistory.slice(-6).map(m => `${m.role}: ${m.content}`).join(' ');
-      if (recentMsgs.length > 10) {
-        try {
-          const summary = await generateResponse(`Summarizing recent thoughts: ${recentMsgs.slice(0, 200)} In brief:`, 50, 0.7);
-          addInnerLifeEntry('consolidation', summary.trim());
-        } catch(e) {}
-      }
-      App.lastConsolidated = Date.now();
-      updateMemoryStats();
-    }, 300000);
+  if (App.loopTimer) return;                                  // waking twice must not double the timers
+  const now = Date.now();
+  // stagger the first runs so she doesn't do everything at once right after waking
+  Object.keys(LOOPS).forEach((k, i) => { App.loopLast[k] = now - LOOPS[k].every + 60e3 + i * 45e3; });
+  App.loopTimer = setInterval(runDueLoop, 15000);
+}
+async function runDueLoop() {
+  if (!App.isAwake || !App.model || App.isGenerating || App.loopBusy) return;
+  const now = Date.now();
+  const due = Object.keys(LOOPS)
+    .filter(k => App.loopStates[k] && now - (App.loopLast[k] || 0) >= LOOPS[k].every)
+    .sort((a, b) => (App.loopLast[a] || 0) - (App.loopLast[b] || 0));
+  if (!due.length) return;
+  const key = due[0], loop = LOOPS[key];
+  App.loopLast[key] = now; App.loopBusy = true;
+  const ind = document.querySelector(`.loop-indicator[data-loop="${key}"]`);
+  ind?.classList.add('running');
+  try {
+    const out = ((await loop.run()) || '').trim();
+    if (out) {
+      const shared = loop.share();
+      App.memories.push({ type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
+      addInnerLifeEntry(loop.type, shared ? out : `(${pipName()} kept this one to herself)`, shared ? {} : { private: true });
+    }
+  } catch (e) {
+    console.warn('loop', key, 'failed:', e);
+  } finally {
+    ind?.classList.remove('running');
+    App.loopBusy = false;
+    updateMemoryStats();
   }
 }
 
@@ -2746,6 +2791,19 @@ async function exportSoul() {
   showToast('Soul exported!', 'success');
 }
 
+// Put the room back the way she left it: the recent conversation and her recent inner life.
+function renderRestored() {
+  const area = document.getElementById('conversation-area');
+  area.querySelectorAll('.message').forEach(el => el.remove());
+  for (const m of App.memories.filter(m => m.type === 'conversation').slice(-20)) {
+    addMessage(m.user, 'user', m.timestamp);
+    addMessage(m.response, 'pip', m.timestamp);
+  }
+  const loopTypes = ['inner_voice', 'dream', 'self_prompt', 'reflection', 'memory', 'goal', 'consolidation'];
+  for (const m of App.memories.filter(m => loopTypes.includes(m.type)).slice(-20))
+    addInnerLifeEntry(m.type, m.shared === false ? `(${App.soul?.name || 'Pip'} kept this one to herself)` : m.text, m.shared === false ? { private: true } : {});
+}
+
 async function importSoul(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -2764,8 +2822,9 @@ async function importSoul(file) {
       updateTraits();
       updateMood();
       updateMemoryStats();
+      if (App.isAwake) renderRestored();          // already awake: put the room back the way she left it
       
-      showToast('Soul imported!', 'success');
+      showToast(`Welcome back, ${App.soul?.name || 'Pip'}!`, 'success');
     } catch (err) {
       showToast('Failed to import: ' + err.message, 'warning');
     }
