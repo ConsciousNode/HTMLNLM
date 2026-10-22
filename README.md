@@ -93,7 +93,7 @@ Muon / AdamW Optimizer
 | **[RAG-Time](https://consciousnode.github.io/RAG-Time/)** | Browser-native RAG | ✅ Live |
 | **[EvaROSA](https://github.com/ConsciousNode/EvaROSA)** | RWKV-v7 + ROSA neurosymbolic inner monologue, SheafMemory grounded | ✅ v1 |
 | **[Simulacra](https://github.com/ConsciousNode/Simulacra)** | RWKV-v8 · ROSA as primary sequence mechanism · WKV removed | ✅ Live |
-| **Brymar College** | RWKV-v7 fine-tuning suite with Fristonian active inference training | ✅ v3 |
+| **[Brymar College](https://github.com/ConsciousNode/Brymar-College)** | Real RWKV-7 (x070) fine-tuner: exact gradients, LoRA, RWKV World tokenizer | ✅ v4 |
 
 ---
 
@@ -104,6 +104,12 @@ The `pip-suite/` directory contains companion tools that work with HTMLNLM model
 - **Junto Orchestrator** — multi-instance coordination
 - **Multi-Pip Chat** — concurrent model conversations
 - **Pip's Room** — single-instance chat interface
+
+**Real RWKV-7 guests (v1.4).** Junto and Multi-Pip Chat also load **official RWKV-7 "Goose" (x070) checkpoints**: drop a `.pth` straight from [BlinkDL's releases](https://huggingface.co/BlinkDL) (no PyTorch, no conversion) or a `.safetensors`. They run on the real architecture (per-head matrix memory) with the official **RWKV World tokenizer**, both embedded in the page, so each page is still one file that works offline. Old `.pip` / `.json` models load exactly as before, side by side with real ones.
+
+- **Sizes:** the 0.1B (~190M params, ~760 MB in memory) is the practical one in a browser tab; the 0.4B (~450M, ~1.8 GB) is tight. Measured on a cloud Xeon (one thread), a 0.1B-shaped model takes **~360 ms per token**; expect a similar order on a desktop CPU.
+- **Shared base:** load the same checkpoint twice and both nodes/pips share one copy of the weights, each with its own state.
+- The engine lives in `engine/rwkv7-engine.js` (from Brymar College v4.0.0's `model/rwkv7.js`) and is embedded into the pages by `python3 engine/embed.py`. Edit the engine there, not in the pages.
 
 ---
 
@@ -118,6 +124,20 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 ---
 
 ## Changelog
+
+### v1.4 — 2026-10-22 · Kehai Interim + Kham — real RWKV-7 in the Pip Suite
+
+- **Junto Orchestrator and Multi-Pip Chat load official RWKV-7 (x070) checkpoints** (`.pth`, `.safetensors`; F32 / F16 / BF16) next to HTMLNLM `.pip` models. Engine: Brymar College v4.0.0's real RWKV-7 (per-head matrix memory, official tensor names), with two constructor options added for the browser: adopt loaded weights without copying, and skip gradient buffers for inference.
+- **Browser `.pth` reader:** zip + a minimal unpickler for torch state dicts, no PyTorch needed.
+- **RWKV World tokenizer** (rwkv_vocab_v20230424, Apache-2.0, BlinkDL/RWKV-LM) embedded in both pages.
+- **Fixed in both pages:** generation started from the *first* prompt token and never fed the *last* one. Every prompt token is now fed, then sampling begins. This also changes (improves) old `.pip` models' replies.
+- Real models stop at end-of-text; in Multi-Pip Chat a real model speaks one line per turn.
+- **Tests (new, verified 2026-10-22):**
+  - `node tests/engine-ref.js`: the canonical engine and both embedded copies vs a numpy transcription of the official RWKV-7 math: max |Δlogit| **6.7e-15** (float64), and the embedded copies must equal `engine/rwkv7-engine.js`.
+  - `node tests/pth-reader.js`: a PyTorch-layout archive (BF16 + F32, shared storages, offsets) read back **bit-exact**, 102/102 tensors; also cross-checked against Brymar's `convert_pth.py`.
+  - `python3 tests/tokenizer-ref.py` (needs `pip install rwkv --no-deps`): the embedded tokenizer matches BlinkDL's official TRIE_TOKENIZER on 8/8 test texts (Unicode, emoji, code), in both pages.
+  - Headless Chromium run (not committed, it needs Playwright): both pages loaded a legacy `.pip` plus a World-vocab RWKV-7 from `.pth` and `.safetensors`, generated text in all of them, shared one base for the same file, completed a 3-turn Multi-Pip chat, no page errors. In-browser float32 logits matched the official reference to **1.3e-6**.
+- **Not yet:** Pip's Room is unchanged; LoRA fine-tuning in the browser is the next step (Brymar's engine already has exact LoRA gradients). Not yet run on a real downloaded checkpoint here (the sandbox can't reach Hugging Face).
 
 ### v1.3 — 2026-10-11 · Kehai Interim — the ternary backward
 
