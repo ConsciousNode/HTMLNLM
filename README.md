@@ -127,6 +127,12 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.5.3 — 2026-10-22 · Kehai Interim + Kham — the Journal
+
+- **Settings now has a Journal tab:** everything the autonomous loops have produced, newest first, with date and time, sorted into categories with counts: 💭 Thoughts, 🌙 Dreams, ❓ Wonderings, 🪞 Reflections, 📷 Memories, 🎯 Goals (with her current goal list on top), 🗂 Summaries, or 📖 All. It updates live while open. Private entries stay folded (*"Kept private. Tap to read."*); they're in the soul export either way, since the journal is just her memories.
+- The settings panel no longer runs off the edge of narrow phone screens.
+- Checked at phone size in headless Chromium with a real exported soul: categories and counts right, private entries unfold on tap, switching back to Settings works, no page errors.
+
 ### v1.5.2 — 2026-10-22 · Kehai Interim + Kham — no hard-coded names, and you can see the loops working
 
 - **No proper name is built in.** Pip's Room is named for Pip, but the resident is whoever's in it. The name field starts empty; leave it empty and the resident picks their own name on waking (the real 0.1B, twice: *Azazel*, *James*). Type a name to give one instead, or change it any time from the same field. Fallbacks say *Resident*, and private entries say *"kept this one private"*.

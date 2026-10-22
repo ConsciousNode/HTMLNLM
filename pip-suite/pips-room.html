@@ -596,6 +596,30 @@ header h1 {
 #settings-panel.open {
   right: 0;
 }
+#settings-panel { max-width: 100vw; }
+#settings-tabs { display: flex; gap: 4px; }
+.settings-tab {
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  color: var(--text-muted); font-size: 13px; font-weight: 600; padding: 6px 12px; cursor: pointer;
+}
+.settings-tab.active { color: var(--text-main); border-color: var(--border); background: var(--bg-panel); }
+#journal-content { flex: 1; overflow-y: auto; padding: 16px 20px 24px; display: none; }
+#settings-panel.journal #journal-content { display: block; }
+#settings-panel.journal #settings-content { display: none; }
+#journal-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.journal-cat {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 999px;
+  color: var(--text-soft); font-size: 12px; padding: 5px 10px; cursor: pointer;
+}
+.journal-cat.active { border-color: var(--accent); color: var(--accent); }
+.journal-cat .n { opacity: 0.6; margin-left: 4px; font-family: var(--font-mono); }
+.journal-goals { background: var(--bg-panel); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; color: var(--text-soft); }
+.journal-goals b { color: var(--text-main); font-weight: 600; }
+.journal-entry { padding: 10px 12px; background: var(--bg-panel); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid var(--accent); }
+.journal-entry .when { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 4px; }
+.journal-entry .what { font-size: 13px; color: var(--text-soft); line-height: 1.45; white-space: pre-wrap; }
+.journal-entry.private .what { font-style: italic; opacity: 0.6; cursor: pointer; }
+.journal-empty { color: var(--text-muted); font-size: 13px; padding: 20px 0; text-align: center; }
 
 #settings-header {
   display: flex;
@@ -993,8 +1017,15 @@ header h1 {
 
 <div id="settings-panel">
   <div id="settings-header">
-    <span id="settings-title">Settings</span>
+    <div id="settings-tabs">
+      <button class="settings-tab active" data-tab="settings">Settings</button>
+      <button class="settings-tab" data-tab="journal">Journal</button>
+    </div>
     <button id="settings-close">x</button>
+  </div>
+  <div id="journal-content">
+    <div id="journal-cats"></div>
+    <div id="journal-list"></div>
   </div>
   <div id="settings-content">
     <div class="settings-section">
@@ -2730,6 +2761,64 @@ document.querySelectorAll('.loop-indicator').forEach(el => el.addEventListener('
   showToast(last.shared === false ? `${label}: (kept private)` : `${label}: ${clip(last.text, 140)}`, 'info', 8000);
 }));
 
+// ── Journal: everything the loops have produced, by category (it's all in her memories,
+// so it's all in the soul export too). Private entries stay folded until tapped.
+const JOURNAL_CATS = [
+  ['all', '📖 All'], ['inner_voice', '💭 Thoughts'], ['dream', '🌙 Dreams'], ['self_prompt', '❓ Wonderings'],
+  ['reflection', '🪞 Reflections'], ['memory', '📷 Memories'], ['goal', '🎯 Goals'], ['consolidation', '🗂 Summaries'],
+];
+App.journalCat = 'all';
+function renderJournal() {
+  const types = JOURNAL_CATS.slice(1).map(c => c[0]);
+  const items = App.memories.filter(m => types.includes(m.type));
+  const count = t => t === 'all' ? items.length : items.filter(m => m.type === t).length;
+  const cats = document.getElementById('journal-cats');
+  cats.innerHTML = '';
+  for (const [t, label] of JOURNAL_CATS) {
+    const b = document.createElement('button');
+    b.className = 'journal-cat' + (App.journalCat === t ? ' active' : '');
+    b.innerHTML = `${label}<span class="n">${count(t)}</span>`;
+    b.onclick = () => { App.journalCat = t; renderJournal(); };
+    cats.appendChild(b);
+  }
+  const list = document.getElementById('journal-list');
+  list.innerHTML = '';
+  if (App.journalCat === 'goal' && App.soul?.goals?.length) {
+    const g = document.createElement('div'); g.className = 'journal-goals';
+    g.innerHTML = '<b>Current goals</b><br>';
+    g.appendChild(document.createTextNode(App.soul.goals.join(' · ')));
+    list.appendChild(g);
+  }
+  const shown = items.filter(m => App.journalCat === 'all' || m.type === App.journalCat).slice().reverse();
+  if (!shown.length) {
+    list.innerHTML += `<div class="journal-empty">Nothing here yet. ${App.isAwake ? 'Give it a few minutes.' : 'Wake someone up first.'}</div>`;
+    return;
+  }
+  for (const m of shown) {
+    const e = document.createElement('div');
+    e.className = `journal-entry inner-life-entry ${m.type}` + (m.shared === false ? ' private' : '');
+    const when = document.createElement('div'); when.className = 'when';
+    const d = new Date(m.timestamp || Date.now());
+    when.textContent = `${LOOP_LABELS[m.type] || ''} ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+    const what = document.createElement('div'); what.className = 'what';
+    if (m.shared === false) {
+      what.textContent = 'Kept private. Tap to read.';
+      what.onclick = () => { what.textContent = m.text; e.classList.remove('private'); what.onclick = null; };
+    } else what.textContent = m.text;
+    e.append(when, what);
+    list.appendChild(e);
+  }
+}
+function journalOpen() {
+  return document.getElementById('settings-panel').classList.contains('open') &&
+         document.getElementById('settings-panel').classList.contains('journal');
+}
+document.querySelectorAll('.settings-tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.settings-tab').forEach(x => x.classList.toggle('active', x === t));
+  document.getElementById('settings-panel').classList.toggle('journal', t.dataset.tab === 'journal');
+  if (t.dataset.tab === 'journal') renderJournal();
+}));
+
 App.loopLast = {}; App.loopBusy = false; App.loopTimer = null;
 function startAutonomousLoops() {
   if (App.loopTimer) return;                                  // waking twice must not double the timers
@@ -2756,6 +2845,7 @@ async function runDueLoop() {
       App.memories.push({ type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
       addInnerLifeEntry(loop.type, shared ? out : `(${pipName()} kept this one private)`, shared ? {} : { private: true });
       noteNewInnerLife();
+      if (journalOpen()) renderJournal();
       if (shared) showToast(`${LOOP_LABELS[loop.type]} ${clip(out, 90)}`, 'info', 7000);   // so you notice it happened
     }
   } catch (e) {
