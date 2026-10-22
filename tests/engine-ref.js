@@ -10,7 +10,7 @@ const BEGIN = '// ==== RWKV7 ENGINE', END = '// ==== END RWKV7 ENGINE ====';
 const extract = src => { const i = src.indexOf(BEGIN), j = src.indexOf(END, i); if (i < 0 || j < 0) throw new Error('engine markers not found'); return src.slice(i, j + END.length); };
 const canonical = extract(fs.readFileSync(path.join(root, 'engine', 'rwkv7-engine.js'), 'utf8'));
 const copies = [['engine/rwkv7-engine.js', canonical]];
-for (const f of ['pip-suite/junto-orchestrator.html', 'pip-suite/multi-pip-chat.html']) {
+for (const f of ['pip-suite/junto-orchestrator.html', 'pip-suite/multi-pip-chat.html', 'pip-suite/pips-room.html']) {
   const p = path.join(root, f); if (!fs.existsSync(p)) continue;
   const src = fs.readFileSync(p, 'utf8'); if (!src.includes(BEGIN)) { console.log(`${f}: no engine embedded (skipped)`); continue; }
   copies.push([f, extract(src)]);

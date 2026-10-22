@@ -697,6 +697,10 @@ header h1 span {
             <label>Temperature</label>
             <input type="number" id="chat-temp" value="0.85" min="0.1" max="2" step="0.05">
           </div>
+          <div class="control-group" title="Repetition control for RWKV-7 checkpoints: nudges each Pip away from repeating itself. 0 = off. Not applied to .pip models.">
+            <label>Anti-repeat</label>
+            <input type="number" id="chat-rep" value="0.4" min="0" max="2" step="0.1">
+          </div>
           <div id="action-buttons">
             <button class="btn primary" id="auto-chat-btn">Auto Chat</button>
           </div>
@@ -1572,6 +1576,30 @@ class LanguageModel {
   }
 }
 
+// ── Repetition control ───────────────────────────────────────────────
+// RWKV/ChatRWKV-style presence + frequency penalty with decay.
+// Every token seen so far gets subtracted from its logit:
+//   logit -= presence + frequency * (decayed count)
+// Counts decay a little each step, so old repeats fade back in.
+// Only for real RWKV-7 checkpoints (65k World vocab): on tiny
+// char-level .pip models it would punish every letter of the alphabet.
+const REP_DEFAULTS = { presence: 0.4, frequency: 0.4, decay: 0.996 };
+function makeRepTracker(opts) {
+  const o = Object.assign({}, REP_DEFAULTS, opts || {});
+  const counts = new Map();
+  return {
+    opts: o,
+    add(id, w = 1) { counts.set(id, (counts.get(id) || 0) + w); },
+    step() { if (o.decay < 1) for (const [k, v] of counts) counts.set(k, v * o.decay); },
+    apply(logits) {
+      if (!(o.presence > 0 || o.frequency > 0) || counts.size === 0) return logits;
+      const out = Float32Array.from(logits);
+      for (const [id, c] of counts) if (id > 0 && id < out.length) out[id] -= o.presence + o.frequency * c;
+      return out;
+    }
+  };
+}
+
 function sampleLogits(logits, temp, topP) {
   if (temp <= 0.01) {
     let max = -Infinity, best = 0;
@@ -1813,10 +1841,28 @@ const ChatRoom = {
       if (real) await yieldToMain();
     }
     const maxTokens = 60, gen = [];
+    // Repetition control (RWKV-7 only). Seeded with this speaker's own recent lines, so a
+    // Pip that keeps saying the same thing turn after turn gets nudged off it, while echoing
+    // the *other* speaker (answering their question, using their words) stays free.
+    let rep = null;
+    const rpv = parseFloat((document.getElementById('chat-rep') || {}).value);
+    const repPenalty = Number.isFinite(rpv) ? rpv : REP_DEFAULTS.presence;   // read live, also for typed-in messages
+    if (real && repPenalty > 0) {
+      rep = makeRepTracker({ presence: repPenalty, frequency: repPenalty });
+      for (const m of this.conversationHistory.slice(-8))
+        if (m.sender === pip.name) for (const id of pip.tokenizer.encode(m.text)) rep.add(id);
+    }
     for (let i = 0; i < maxTokens; i++) {
-      const next = sampleLogits(res.logits, this.temp, 0.9);
+      const logits = rep ? rep.apply(res.logits) : res.logits;
+      let next = sampleLogits(logits, this.temp, 0.9);
+      // Real models: a line break before the Pip has said anything would end the turn with an
+      // empty line, and empty lines in the context make the next one likelier. Redraw instead.
+      if (real && !pip.tokenizer.decode(gen).trim())
+        for (let k = 0; k < 8 && (next === 0 || pip.tokenizer.decode([next]).includes('\n')); k++)
+          next = sampleLogits(logits, this.temp, 0.9);
       if (real && next === 0) break;                               // RWKV World token 0 = end of text
       gen.push(next);
+      if (rep) { rep.step(); rep.add(next); }
       if (real && pip.tokenizer.decode(gen).includes('\n')) break; // real models: one chat line per turn
       res = pip.model.forward(next, state); state = res.state;
       await yieldToMain();

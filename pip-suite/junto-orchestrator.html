@@ -737,6 +737,14 @@ header h1 span {
                 <label>Max Tokens</label>
                 <input type="number" id="inf-max" value="100" min="10" max="500" step="10">
               </div>
+              <div class="inference-control" title="Repetition control for RWKV-7 checkpoints: pushes down tokens it has already said. 0 = off. Not applied to .pip models.">
+                <label>Presence</label>
+                <input type="number" id="inf-presence" value="0.4" min="0" max="2" step="0.1">
+              </div>
+              <div class="inference-control" title="Extra push-down per repeat of the same token (fades slowly). 0 = off. RWKV-7 only.">
+                <label>Frequency</label>
+                <input type="number" id="inf-frequency" value="0.4" min="0" max="2" step="0.1">
+              </div>
             </div>
           </div>
           <div id="inference-input-area">
@@ -1612,6 +1620,30 @@ class LanguageModel {
   }
 }
 
+// ── Repetition control ───────────────────────────────────────────────
+// RWKV/ChatRWKV-style presence + frequency penalty with decay.
+// Every token seen so far gets subtracted from its logit:
+//   logit -= presence + frequency * (decayed count)
+// Counts decay a little each step, so old repeats fade back in.
+// Only for real RWKV-7 checkpoints (65k World vocab): on tiny
+// char-level .pip models it would punish every letter of the alphabet.
+const REP_DEFAULTS = { presence: 0.4, frequency: 0.4, decay: 0.996 };
+function makeRepTracker(opts) {
+  const o = Object.assign({}, REP_DEFAULTS, opts || {});
+  const counts = new Map();
+  return {
+    opts: o,
+    add(id, w = 1) { counts.set(id, (counts.get(id) || 0) + w); },
+    step() { if (o.decay < 1) for (const [k, v] of counts) counts.set(k, v * o.decay); },
+    apply(logits) {
+      if (!(o.presence > 0 || o.frequency > 0) || counts.size === 0) return logits;
+      const out = Float32Array.from(logits);
+      for (const [id, c] of counts) if (id > 0 && id < out.length) out[id] -= o.presence + o.frequency * c;
+      return out;
+    }
+  };
+}
+
 function sampleLogits(logits, temp, topP) {
   if (temp <= 0.01) {
     let max = -Infinity, best = 0;
@@ -1952,10 +1984,14 @@ async function runInference(node, prompt, temp, topP, maxTokens) {
     if (real) await yieldToMain();
   }
   const gen = [];
+  const num = (id, d) => { const v = parseFloat((document.getElementById(id) || {}).value); return Number.isFinite(v) ? v : d; };
+  const rep = real ? makeRepTracker({ presence: num('inf-presence', REP_DEFAULTS.presence),
+                                      frequency: num('inf-frequency', REP_DEFAULTS.frequency) }) : null;
   for (let i = 0; i < maxTokens; i++) {
-    const next = sampleLogits(res.logits, temp, topP);
+    const next = sampleLogits(rep ? rep.apply(res.logits) : res.logits, temp, topP);
     if (real && next === 0) break;               // RWKV World token 0 = end of text
     gen.push(next);
+    if (rep) { rep.step(); rep.add(next); }
     res = node.model.forward(next, state); state = res.state;
     if (real || i % 5 === 0) await yieldToMain();
   }
