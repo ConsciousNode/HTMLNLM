@@ -883,7 +883,7 @@ header h1 {
     <div id="sidebar">
       <div id="pip-canvas-container">
         <canvas id="pip-canvas" width="120" height="120"></canvas>
-        <input type="text" id="pip-name" value="Pip" placeholder="Name...">
+        <input type="text" id="pip-name" value="" placeholder="Name (or let them choose)">
         <div id="pip-status">Waiting...</div>
         <div id="waking-progress">
           <div id="waking-progress-fill"></div>
@@ -2223,13 +2223,13 @@ const App = {
   }
 };
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', ms = 3000) {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.textContent = message;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  setTimeout(() => toast.remove(), ms);
 }
 
 function setSoulConsole(text) {
@@ -2322,7 +2322,7 @@ function addMessage(text, sender, ts) {
   
   const senderEl = document.createElement('div');
   senderEl.className = 'message-sender';
-  senderEl.textContent = sender === 'pip' ? App.soul?.name || 'Pip' : 'You';
+  senderEl.textContent = sender === 'pip' ? App.soul?.name || 'Resident' : 'You';
   
   const textEl = document.createElement('div');
   textEl.textContent = text;
@@ -2417,7 +2417,7 @@ async function handleUserMessage() {
   
   addMessage(text, 'user');
   
-  const pipName = App.soul?.name || 'Pip';
+  const pipName = App.soul?.name || 'Resident';
   let prompt = `${pipName} is having a conversation.\nUser: ${text}\n${pipName}:`;
   if (App.kind === 'rwkv7') {
     // real models can follow a conversation, so give her the last few exchanges
@@ -2510,13 +2510,32 @@ function createSoul(name) {
   };
 }
 
-function wakeUp(cfg, version, nParams) {
+// A resident with no name given picks their own on waking (Pip's Room is named for Pip,
+// but whoever lives here is whoever is in it). Up to 3 tries; falls back to "Resident".
+async function chooseName() {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const out = await generateResponse("Someone new has just woken up in a little room.\nUser: Hi there! What's your name?\nThem: My name is", 8, 0.9);
+      const m = (out || '').match(/[A-Z][a-z]{1,15}(?:[-'][A-Z]?[a-z]{1,15})?/);
+      if (m && !['User', 'Them', 'The', 'I', 'My', 'Hi', 'Hello'].includes(m[0])) return m[0];
+    } catch (e) {}
+  }
+  return 'Resident';
+}
+
+async function wakeUp(cfg, version, nParams) {
   setSoulConsole('Creating soul...');
   updateWakingProgress(90);
   
   // If a soul was imported before the model was loaded, she wakes up as herself.
   if (!App.soul) {
-    const name = document.getElementById('pip-name').value || 'Pip';
+    let name = document.getElementById('pip-name').value.trim();
+    if (!name) {
+      setSoulConsole('Choosing a name...');
+      name = await chooseName();
+      document.getElementById('pip-name').value = name;
+      showToast(`They chose a name: ${name}`, 'success', 5000);
+    }
     App.soul = createSoul(name);
   }
   App.genesisDate = new Date(App.soul.genesisDate);
@@ -2561,7 +2580,7 @@ async function loadModelFile(file) {
     App.model = res.model;
     App.tokenizer = worldTokenizer();
     App.kind = 'rwkv7';
-    wakeUp({ vocab: res.cfg.vocabSize, dim: res.cfg.dim, layers: res.cfg.numLayers }, 'rwkv7 x070', res.nParams);
+    await wakeUp({ vocab: res.cfg.vocabSize, dim: res.cfg.dim, layers: res.cfg.numLayers }, 'rwkv7 x070', res.nParams);
     return;
   }
   App.kind = 'pip';
@@ -2625,7 +2644,7 @@ async function loadModelFile(file) {
           }
         };
         
-        wakeUp(cfg, version);
+        await wakeUp(cfg, version);
         
         resolve();
       } catch (err) {
@@ -2654,7 +2673,7 @@ const LOOPS = {
   consolidation: { every: 10 * 60e3, type: 'consolidation', share: () => true, run: loopConsolidate },
 };
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-const pipName = () => App.soul?.name || 'Pip';
+const pipName = () => App.soul?.name || 'Resident';
 const chats = () => App.memories.filter(m => m.type === 'conversation');
 const clip = (t, n) => (t || '').length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : (t || '');
 
@@ -2694,6 +2713,23 @@ async function loopConsolidate() {
   return generateResponse(`Summarizing what we talked about: ${clip(text, 200)} In brief:`, 50, 0.7);
 }
 
+const LOOP_LABELS = { inner_voice: '💭', dream: '🌙', self_prompt: '❓', reflection: '🪞', memory: '📷', goal: '🎯', consolidation: '🗂' };
+App.unseenInnerLife = 0;
+function noteNewInnerLife() {
+  const panel = document.getElementById('inner-life-panel'), title = document.getElementById('inner-life-title');
+  if (panel.classList.contains('collapsed')) App.unseenInnerLife++;
+  title.textContent = App.unseenInnerLife ? `Inner Life · ${App.unseenInnerLife} new` : 'Inner Life';
+}
+// Tap a loop letter to see the last thing that loop produced.
+document.querySelectorAll('.loop-indicator').forEach(el => el.addEventListener('click', () => {
+  const type = LOOPS[el.dataset.loop]?.type;
+  const last = App.memories.filter(m => m.type === type).slice(-1)[0];
+  const label = `${LOOP_LABELS[type] || ''} ${el.title}`;
+  if (!App.loopStates[el.dataset.loop]) return showToast(`${label} is switched off`, 'info');
+  if (!last) return showToast(`${label}: nothing yet`, 'info');
+  showToast(last.shared === false ? `${label}: (kept private)` : `${label}: ${clip(last.text, 140)}`, 'info', 8000);
+}));
+
 App.loopLast = {}; App.loopBusy = false; App.loopTimer = null;
 function startAutonomousLoops() {
   if (App.loopTimer) return;                                  // waking twice must not double the timers
@@ -2718,7 +2754,9 @@ async function runDueLoop() {
     if (out) {
       const shared = loop.share();
       App.memories.push({ type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
-      addInnerLifeEntry(loop.type, shared ? out : `(${pipName()} kept this one to herself)`, shared ? {} : { private: true });
+      addInnerLifeEntry(loop.type, shared ? out : `(${pipName()} kept this one private)`, shared ? {} : { private: true });
+      noteNewInnerLife();
+      if (shared) showToast(`${LOOP_LABELS[loop.type]} ${clip(out, 90)}`, 'info', 7000);   // so you notice it happened
     }
   } catch (e) {
     console.warn('loop', key, 'failed:', e);
@@ -2801,7 +2839,7 @@ function renderRestored() {
   }
   const loopTypes = ['inner_voice', 'dream', 'self_prompt', 'reflection', 'memory', 'goal', 'consolidation'];
   for (const m of App.memories.filter(m => loopTypes.includes(m.type)).slice(-20))
-    addInnerLifeEntry(m.type, m.shared === false ? `(${App.soul?.name || 'Pip'} kept this one to herself)` : m.text, m.shared === false ? { private: true } : {});
+    addInnerLifeEntry(m.type, m.shared === false ? `(${App.soul?.name || 'Resident'} kept this one private)` : m.text, m.shared === false ? { private: true } : {});
 }
 
 async function importSoul(file) {
@@ -2824,7 +2862,7 @@ async function importSoul(file) {
       updateMemoryStats();
       if (App.isAwake) renderRestored();          // already awake: put the room back the way she left it
       
-      showToast(`Welcome back, ${App.soul?.name || 'Pip'}!`, 'success');
+      showToast(`Welcome back, ${App.soul?.name || 'Resident'}!`, 'success');
     } catch (err) {
       showToast('Failed to import: ' + err.message, 'warning');
     }
@@ -2877,6 +2915,7 @@ document.getElementById('settings-close').addEventListener('click', () => {
 
 document.getElementById('inner-life-header').addEventListener('click', () => {
   document.getElementById('inner-life-panel').classList.toggle('collapsed');
+  App.unseenInnerLife = 0; document.getElementById('inner-life-title').textContent = 'Inner Life';
 });
 
 document.querySelectorAll('.toggle-switch[id^="toggle-"]').forEach(toggle => {
@@ -2908,7 +2947,7 @@ document.getElementById('clear-memories-btn').addEventListener('click', () => {
 
 document.getElementById('reset-soul-btn').addEventListener('click', () => {
   showConfirmModal('Reset Soul', 'This will reset all traits and goals. Are you sure?', () => {
-    const name = App.soul?.name || 'Pip';
+    const name = App.soul?.name || 'Resident';
     App.soul = createSoul(name);
     updateTraits();
     updateMood();
@@ -2924,6 +2963,12 @@ document.getElementById('clear-all-btn').addEventListener('click', () => {
 });
 
 document.getElementById('export-btn').addEventListener('click', exportSoul);
+document.getElementById('pip-name').addEventListener('change', (e) => {
+  const name = e.target.value.trim();
+  if (!App.soul || !name || name === App.soul.name) return;
+  App.soul.name = name;
+  showToast(`Now called ${name}`, 'success');
+});
 
 document.getElementById('import-btn').addEventListener('click', () => {
   document.getElementById('import-file-input').click();
