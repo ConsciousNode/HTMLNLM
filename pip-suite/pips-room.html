@@ -621,6 +621,17 @@ header h1 {
 .settings-tab.active { color: var(--text-main); border-color: var(--border); background: var(--bg-panel); }
 #journal-content { flex: 1; overflow-y: auto; padding: 16px 20px 24px; display: none; }
 #settings-panel.journal #journal-content { display: block; }
+#threads-content { flex: 1; overflow-y: auto; padding: 16px 20px 24px; display: none; }
+#settings-panel.threads #threads-content { display: block; }
+#settings-panel.threads #settings-content { display: none; }
+#threads-intro { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px; }
+.thread-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+.thread-card.active { border-color: var(--accent); }
+.thread-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.thread-title { font-size: 14px; color: var(--text-main); cursor: text; }
+.thread-meta { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 4px; }
+.thread-meta .warn { color: var(--warm); }
+.thread-badge { font-size: 11px; color: var(--accent); }
 #settings-panel.journal #settings-content { display: none; }
 #journal-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .journal-cat {
@@ -1036,8 +1047,14 @@ header h1 {
     <div id="settings-tabs">
       <button class="settings-tab active" data-tab="settings">Settings</button>
       <button class="settings-tab" data-tab="journal">Journal</button>
+      <button class="settings-tab" data-tab="threads">Threads</button>
     </div>
     <button id="settings-close">x</button>
+  </div>
+  <div id="threads-content">
+    <div id="threads-intro">Each thread is its own living memory. A new thread starts as a blank slate that only carries a little of the others (their summaries). Old threads stay here to go back to.</div>
+    <button class="settings-btn primary" id="new-thread-btn">+ New thread</button>
+    <div id="threads-list"></div>
   </div>
   <div id="journal-content">
     <div id="journal-cats"></div>
@@ -1162,6 +1179,8 @@ header h1 {
       <div class="settings-section-title" id="dev-toggle" style="cursor:pointer">Developer console <span id="dev-caret">▸</span></div>
       <div id="dev-body" hidden>
         <div id="dev-fields"></div>
+        <div class="settings-row"><span>Living memory <small id="live-info">not started</small></span>
+          <button class="settings-btn" id="live-forget" title="Throw away the RWKV state and settle in again from the soul and recent conversation">Start fresh</button></div>
         <div class="settings-row"><button class="settings-btn" id="dev-reset">Reset to defaults</button></div>
         <div class="dev-label">Last prompt sent <small>(exactly what the model saw)</small></div>
         <pre id="dev-prompt"></pre>
@@ -2308,7 +2327,8 @@ function setSoulConsole(text) {
 }
 
 function updatePipStatus(status) {
-  document.getElementById('pip-status').textContent = status;
+  const t = (App.threads || []).length > 1 ? currentThread() : null;
+  document.getElementById('pip-status').textContent = status + (t && status === 'Awake' ? ` · ${t.title}` : '');
 }
 
 function updateWakingProgress(pct) {
@@ -2493,10 +2513,11 @@ async function handleUserMessage() {
   let prompt = `${pipName} is having a conversation.\nUser: ${text}\n${pipName}:`;
   if (App.kind === 'rwkv7') {
     // real models can follow a conversation: system block, the last few exchanges, then you
-    const recent = App.dev.contextTurns > 0 ? App.memories.filter(m => m.type === 'conversation').slice(-App.dev.contextTurns) : [];
+    const recent = App.dev.contextTurns > 0 ? chats().slice(-App.dev.contextTurns) : [];
     prompt = systemBlock() +
       recent.map(m => `${you}: ${m.user}\n${pipName}: ${m.response}\n`).join('') + `${you}: ${text}\n${pipName}:`;
   }
+  if (liveOn()) prompt = `${you}: ${text}\n${pipName}:`;            // living memory: only what's new
   App.lastPrompt = prompt; refreshPromptView();
   
   showTypingIndicator();
@@ -2504,13 +2525,20 @@ async function handleUserMessage() {
   while (App.loopBusy) await new Promise(r => setTimeout(r, 200));   // let a running loop finish first
   
   const startTime = Date.now();
-  const response = await generateResponse(prompt, App.dev.maxTokens, App.dev.temperature);
+  let response;
+  if (liveOn()) {
+    const before = App.live ? App.live.tokens : 0;
+    const t = await liveTurn(prompt, App.dev.maxTokens, App.dev.temperature);
+    response = t.text;
+    App.lastPrompt = `[living memory: ${before.toLocaleString()} tokens already inside]\n` + t.fed; refreshPromptView();
+  } else response = await generateResponse(prompt, App.dev.maxTokens, App.dev.temperature);
   const duration = Date.now() - startTime;
   
   hideTypingIndicator();
   addMessage(response, 'pip');
   
   App.memories.push({
+    thread: App.activeThread,
     type: 'conversation',
     user: text,
     response: response,
@@ -2539,7 +2567,7 @@ async function handleUserMessage() {
 
 // ── Settings for the voice (the developer console edits these; saved with the soul) ──
 const DEV_DEFAULTS = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996,
-                       maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true };
+                       maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true, livingMemory: true };
 App.dev = { ...DEV_DEFAULTS };
 App.userName = '';           // what the resident calls you; empty = "friend" in the prompt, "User" as the label
 App.about = '';              // a free note prepended to every conversation
@@ -2576,7 +2604,13 @@ function systemBlock() {
   return 'System: ' + lines.join(' ') + '\n';
 }
 // loops speak as themselves too (identity line only for real models)
-const selfResponse = (p, n, t) => generateResponse((App.kind === 'rwkv7' && App.dev.systemPrompt ? systemBlock() : '') + p, n, t);
+const selfResponse = async (p, n, t) => {
+  if (liveOn()) {                                   // thoughts and dreams become part of who they are
+    const r = await liveTurn(`${App.soul.name} (${LOOP_VERBS[App.currentLoopType] || 'thinking'}): ${p}`, n, t);
+    return r.text;
+  }
+  return generateResponse((App.kind === 'rwkv7' && App.dev.systemPrompt ? systemBlock() : '') + p, n, t);
+};
 
 // ── A soul that changes with living ──
 // Small, transparent nudges (these are rules we chose, not something the model reports):
@@ -2640,7 +2674,7 @@ function buildDevConsole() {
     inp.onchange = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) App.dev[key] = Math.min(max, Math.max(min, v)); inp.value = App.dev[key]; refreshPromptView(); };
     row.appendChild(inp); box.appendChild(row);
   }
-  for (const [key, label] of [['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
+  for (const [key, label] of [['livingMemory', 'Living memory (keep the RWKV state between turns)'], ['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
     const row = document.createElement('label'); row.className = 'dev-row dev-check';
     row.innerHTML = `<span>${label}</span>`;
     const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!App.dev[key];
@@ -2653,12 +2687,199 @@ function refreshPromptView() {
   pre.textContent = App.lastPrompt || (App.soul ? systemBlock() + `${userLabel()}: …\n${App.soul.name}:` : '(wake someone up first)');
 }
 function syncSoulFields() {
+  updateLiveInfo();
   document.getElementById('user-name').value = App.userName || '';
   if (App.genesisDate) document.getElementById('setting-genesis').textContent = new Date(App.genesisDate).toLocaleDateString();
   document.getElementById('setting-conversations').textContent = App.conversationCount || 0;
   document.getElementById('setting-tokens').textContent = App.tokensGenerated || 0;
   document.getElementById('about-note').value = App.about || '';
   buildDevConsole(); refreshPromptView();
+}
+
+// ── Living memory ─────────────────────────────────────────────────────────────────
+// RWKV is recurrent: everything it has read lives in a fixed-size state (≈2.4 MB for a 0.1B).
+// Instead of re-reading the recent conversation from a blank state every turn, the resident keeps
+// one state for life: each turn feeds only what's new (your line, any change to who they are),
+// their thoughts and dreams flow into it too, and it's saved in the soul file. Unbounded length,
+// but not perfect recall: older things blur into gist. Checkpoints are trained on finite stretches
+// (e.g. ctx8192), so very long lives are untested ground.
+App.live = null;            // { state, tokens, print, sig, lastLogits }
+App.pendingLive = null;     // a saved state waiting for its model to be loaded
+const LOOP_VERBS = { inner_voice: 'thinking', dream: 'dreaming', self_prompt: 'wondering', reflection: 'reflecting',
+                     memory: 'remembering', goal: 'setting a goal', consolidation: 'summarizing' };
+const modelPrint = () => App.model && App.model.L ? `rwkv7:${App.model.L}x${App.model.C}x${App.model.N}:${App.model.V}` : '';
+const liveOn = () => App.kind === 'rwkv7' && App.dev.livingMemory;
+function soulSig() {
+  const S = App.soul || {}, t = S.traits || {};
+  const top = Object.keys(TRAIT_WORDS).filter(k => (t[k] || 0) >= 0.5).sort((a, b) => t[b] - t[a]).slice(0, 3)
+    .map(k => (t[k] >= 0.7 ? 'very ' : '') + TRAIT_WORDS[k]).join(',');
+  return { who: `${S.name}|${App.userName}|${App.about.trim()}|${App.dev.soulInPrompt}`, mood: S.mood || '',
+           traits: top, goals: (S.goals || []).filter(g => !DEFAULT_GOALS.includes(g)).slice(-1)[0] || '' };
+}
+// What changed about them since the state last heard, as short System lines (an update to context).
+function soulUpdates() {
+  const now = soulSig(), was = App.live.sig || {}, n = App.soul.name, out = [];
+  if (now.who !== was.who) out.push(systemBlock());                       // new name / your name / note: say it all again
+  else if (App.dev.soulInPrompt) {
+    if (now.traits !== was.traits && now.traits) out.push(`System: ${n} has grown: ${n} is now ${listJoin(now.traits.split(','))}.\n`);
+    if (now.mood !== was.mood && now.mood) out.push(`System: Right now ${n} feels ${now.mood}.\n`);
+    if (now.goals !== was.goals && now.goals) out.push(`System: ${n} has a new goal: ${clip(now.goals.replace(/^\s*\d+[.)]\s*/, ''), 90)}\n`);
+  }
+  App.live.sig = now;
+  return out.join('');
+}
+function updateLiveInfo(note) {
+  const el = document.getElementById('live-info'); if (!el) return;
+  if (note) { el.textContent = note; return; }
+  el.textContent = !liveOn() ? 'off' : App.live ? `${App.live.tokens.toLocaleString()} tokens lived in this state${App.live.tokens > 8192 ? ' (past the model\'s training length: uncharted)' : ''}` : 'not started';
+}
+async function feedLive(text, onProgress) {
+  const ids = App.tokenizer.encode(text);
+  for (let i = 0; i < ids.length; i++) {
+    const r = App.model.forward(ids[i], App.live.state);
+    App.live.state = r.state; App.live.lastLogits = r.logits; App.live.tokens++;
+    if (onProgress && i % 8 === 0) onProgress(i / ids.length);
+    await yieldToMain();
+  }
+}
+// Make sure there's a living state for this model: restore a saved one, or settle in from scratch
+// (system prompt + the last few exchanges, read once).
+async function ensureLive() {
+  if (!liveOn()) return false;
+  if (App.live && App.live.print === modelPrint()) return true;
+  if (App.pendingLive) {
+    const p = App.pendingLive; App.pendingLive = null;
+    if (p.print === modelPrint()) { App.live = decodeLive(p); updateLiveInfo(); return true; }
+    showToast('Their saved memory belongs to a different model, so they\'re settling in fresh', 'warning', 15000);
+  }
+  App.live = { state: App.model.getEmptyState(), tokens: 0, print: modelPrint(), sig: soulSig(), lastLogits: null };
+  const you = userLabel(), n = App.soul.name;
+  const recent = chats().slice(-Math.max(0, App.dev.contextTurns));
+  const seed = systemBlock() + (recent.length ? '' : crossThreadMemory()) + recent.map(m => `${you}: ${m.user}\n${n}: ${m.response}\n`).join('');
+  setSoulConsole('Settling in...');
+  await feedLive(seed, f => { setSoulConsole(`Settling in... ${Math.round(f * 100)}%`); updateLiveInfo(`settling in ${Math.round(f * 100)}%`); });
+  setSoulConsole(''); updateLiveInfo();
+  return true;
+}
+// One turn in the living state: feed `text`, speak one line, and keep what was said (newline included).
+async function liveTurn(text, maxTokens, temp) {
+  await ensureLive();
+  const updates = soulUpdates();
+  await feedLive(updates + text);
+  const tok = App.tokenizer, D = App.dev;
+  const rep = makeRepTracker({ presence: D.presence, frequency: D.frequency, decay: D.decay });
+  for (const m of App.memories.slice(-4)) if (m.response) for (const id of tok.encode(m.response)) rep.add(id);
+  const gen = []; let logits = App.live.lastLogits, ended = false;
+  for (let i = 0; i < maxTokens; i++) {
+    const L = rep.apply(logits);
+    let next = sampleLogits(L, temp, D.topP, D.topK);
+    if (!tok.decode(gen).trim())
+      for (let k = 0; k < 8 && (next === 0 || tok.decode([next]).includes('\n')); k++) next = sampleLogits(L, temp, D.topP, D.topK);
+    if (next === 0) break;                                     // end of text: not fed; a newline closes the line below
+    gen.push(next); App.tokensGenerated++;
+    rep.step(); rep.add(next);
+    const r = App.model.forward(next, App.live.state);       // what they say becomes part of them
+    App.live.state = r.state; App.live.lastLogits = r.logits; App.live.tokens++; logits = r.logits;
+    if (tok.decode(gen).includes('\n')) { ended = true; break; }
+    await yieldToMain();
+  }
+  if (!ended) await feedLive('\n');
+  updateLiveInfo();
+  return { text: tok.decode(gen).split('\n')[0].trim(), fed: updates + text };
+}
+// Saving: all layers' arrays in one Float32 block, base64 (about 3.2 MB of text for a 0.1B).
+function encodeLive() {
+  if (!App.live) return null;
+  const parts = App.live.state.flatMap(l => [l.xa, l.S, l.xf]);
+  const all = new Float32Array(parts.reduce((n, a) => n + a.length, 0));
+  let o = 0; for (const a of parts) { all.set(a, o); o += a.length; }
+  const bytes = new Uint8Array(all.buffer); let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return { print: App.live.print, tokens: App.live.tokens, sig: App.live.sig, layers: App.live.state.length,
+           sizes: [App.live.state[0].xa.length, App.live.state[0].S.length, App.live.state[0].xf.length], data: btoa(bin) };
+}
+function decodeLive(p) {
+  const bin = atob(p.data), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const all = new Float32Array(bytes.buffer), F = App.model.Float || Float32Array, [a, b, c] = p.sizes, state = [];
+  let o = 0;
+  for (let l = 0; l < p.layers; l++) {
+    const take = n => { const x = new F(n); x.set(all.subarray(o, o + n)); o += n; return x; };
+    state.push({ xa: take(a), S: take(b), xf: take(c) });
+  }
+  return { state, tokens: p.tokens, print: p.print, sig: p.sig || soulSig(), lastLogits: null };
+}
+
+// ── Threads ───────────────────────────────────────────────────────────────────────
+// Each thread is its own living memory (RWKV state). Switching saves the current one and wakes the
+// other exactly where it left off. A new thread is a blank slate except for a short cross-thread
+// memory built from their summaries (🗂) elsewhere. All threads travel in the soul file.
+App.threads = []; App.activeThread = null;
+const threadOf = m => m.thread || (App.threads[0] && App.threads[0].id) || 't1';
+const currentThread = () => App.threads.find(t => t.id === App.activeThread);
+function ensureThreads() {
+  if (!App.threads.length) {
+    App.threads = [{ id: 't1', title: 'Thread 1', created: App.soul?.genesisDate || Date.now(), lastActive: Date.now(), live: null }];
+    App.activeThread = 't1';
+  }
+  if (!currentThread()) App.activeThread = App.threads[0].id;
+}
+function crossThreadMemory() {
+  const n = App.soul?.name || 'Resident';
+  const sums = App.memories.filter(m => m.type === 'consolidation' && threadOf(m) !== App.activeThread && m.shared !== false)
+    .slice(-3).map(m => clip(m.text, 140));
+  return sums.length ? `System: Things ${n} remembers from other conversations: ${sums.join(' / ')}\n` : '';
+}
+function threadBusy() {
+  if (App.isGenerating || App.loopBusy) { showToast('One moment: they\'re in the middle of a thought', 'info'); return true; }
+  return false;
+}
+function stashActiveThread() {
+  const t = currentThread(); if (!t) return;
+  if (App.live) t.live = encodeLive();
+  t.lastActive = Date.now();
+}
+async function switchThread(id) {
+  if (id === App.activeThread || threadBusy()) return;
+  stashActiveThread();
+  App.activeThread = id;
+  const t = currentThread(); t.lastActive = Date.now();
+  App.live = null; App.pendingLive = t.live || null;
+  if (App.isAwake && App.model) { updatePipStatus('Settling in...'); await ensureLive(); }
+  renderRestored(); updatePipStatus(App.isAwake ? 'Awake' : 'Waiting...'); updateLiveInfo(); renderThreads();
+  showToast(`Now in "${t.title}"`, 'success');
+}
+async function newThread() {
+  if (threadBusy()) return;
+  const title = (window.prompt('Name the new thread:', `Thread ${App.threads.length + 1}`) || '').trim();
+  if (!title) return;
+  stashActiveThread();
+  const t = { id: 't' + Date.now().toString(36), title, created: Date.now(), lastActive: Date.now(), live: null };
+  App.threads.push(t); App.activeThread = t.id;
+  App.live = null; App.pendingLive = null;
+  if (App.isAwake && App.model) { updatePipStatus('Settling in...'); await ensureLive(); }
+  renderRestored(); updatePipStatus(App.isAwake ? 'Awake' : 'Waiting...'); updateLiveInfo(); renderThreads();
+  showToast(`Started "${title}"`, 'success');
+}
+function renderThreads() {
+  const list = document.getElementById('threads-list'); if (!list) return;
+  ensureThreads(); list.innerHTML = '';
+  for (const t of App.threads.slice().reverse()) {
+    const active = t.id === App.activeThread;
+    const exchanges = App.memories.filter(m => m.type === 'conversation' && threadOf(m) === t.id).length;
+    const tokens = active && App.live ? App.live.tokens : (t.live ? t.live.tokens : 0);
+    const card = document.createElement('div'); card.className = 'thread-card' + (active ? ' active' : '');
+    const top = document.createElement('div'); top.className = 'thread-top';
+    const title = document.createElement('div'); title.className = 'thread-title'; title.textContent = t.title; title.title = 'Tap to rename';
+    title.onclick = () => { const v = (window.prompt('Rename this thread:', t.title) || '').trim(); if (v) { t.title = v; renderThreads(); updatePipStatus(App.isAwake ? 'Awake' : 'Waiting...'); } };
+    top.appendChild(title);
+    if (active) { const b = document.createElement('span'); b.className = 'thread-badge'; b.textContent = '● here now'; top.appendChild(b); }
+    else { const b = document.createElement('button'); b.className = 'settings-btn'; b.textContent = 'Go back'; b.onclick = () => switchThread(t.id); top.appendChild(b); }
+    const meta = document.createElement('div'); meta.className = 'thread-meta';
+    meta.innerHTML = `${exchanges} exchanges · ${tokens.toLocaleString()} tokens lived · ${new Date(t.lastActive || t.created).toLocaleDateString()}` +
+      (tokens > 8192 ? ' · <span class="warn">past training length</span>' : '');
+    card.append(top, meta); list.appendChild(card);
+  }
 }
 
 // Real RWKV-7 voice: feed the prompt, then speak one line, with repetition control
@@ -2756,6 +2977,8 @@ async function wakeUp(cfg, version, nParams) {
   document.getElementById('input-area').classList.remove('hidden');
   document.getElementById('inner-life-panel').classList.remove('hidden');
   
+  ensureThreads();
+  if (liveOn()) { updatePipStatus('Settling in...'); await ensureLive(); }
   App.isAwake = true;
   updatePipStatus('Awake');
   if (App.memories.length) renderRestored();
@@ -2875,7 +3098,7 @@ const LOOPS = {
 };
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const pipName = () => App.soul?.name || 'Resident';
-const chats = () => App.memories.filter(m => m.type === 'conversation');
+const chats = () => App.memories.filter(m => m.type === 'conversation' && threadOf(m) === App.activeThread);
 const clip = (t, n) => (t || '').length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : (t || '');
 
 async function loopInnerVoice() {
@@ -2986,7 +3209,9 @@ function journalOpen() {
 document.querySelectorAll('.settings-tab').forEach(t => t.addEventListener('click', () => {
   document.querySelectorAll('.settings-tab').forEach(x => x.classList.toggle('active', x === t));
   document.getElementById('settings-panel').classList.toggle('journal', t.dataset.tab === 'journal');
+  document.getElementById('settings-panel').classList.toggle('threads', t.dataset.tab === 'threads');
   if (t.dataset.tab === 'journal') renderJournal();
+  if (t.dataset.tab === 'threads') renderThreads();
 }));
 
 App.loopLast = {}; App.loopBusy = false; App.loopTimer = null;
@@ -3005,7 +3230,7 @@ async function runDueLoop() {
     .sort((a, b) => (App.loopLast[a] || 0) - (App.loopLast[b] || 0));
   if (!due.length) return;
   const key = due[0], loop = LOOPS[key];
-  App.loopLast[key] = now; App.loopBusy = true;
+  App.loopLast[key] = now; App.loopBusy = true; App.currentLoopType = loop.type;
   const ind = document.querySelector(`.loop-indicator[data-loop="${key}"]`);
   ind?.classList.add('running');
   try {
@@ -3013,7 +3238,7 @@ async function runDueLoop() {
     if (out) {
       const shared = loop.share();
       growSoul(loop.type, '', out);
-      App.memories.push({ type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
+      App.memories.push({ thread: App.activeThread, type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
       addInnerLifeEntry(loop.type, shared ? out : `(${pipName()} kept this one private)`, shared ? {} : { private: true });
       noteNewInnerLife();
       if (journalOpen()) renderJournal();
@@ -3079,6 +3304,8 @@ async function exportSoul() {
     userName: App.userName,
     about: App.about,
     dev: App.dev,
+    threads: (stashActiveThread(), App.threads),
+    activeThread: App.activeThread,
     exportedAt: Date.now()
   };
   
@@ -3097,7 +3324,7 @@ async function exportSoul() {
 function renderRestored() {
   const area = document.getElementById('conversation-area');
   area.querySelectorAll('.message').forEach(el => el.remove());
-  for (const m of App.memories.filter(m => m.type === 'conversation').slice(-20)) {
+  for (const m of App.memories.filter(m => m.type === 'conversation' && threadOf(m) === App.activeThread).slice(-20)) {
     addMessage(m.user, 'user', m.timestamp);
     addMessage(m.response, 'pip', m.timestamp);
   }
@@ -3123,7 +3350,15 @@ async function importSoul(file) {
       if (typeof data.userName === 'string') App.userName = data.userName;
       if (typeof data.about === 'string') App.about = data.about;
       if (data.dev) App.dev = { ...DEV_DEFAULTS, ...data.dev };
+      App.live = null;
+      if (Array.isArray(data.threads) && data.threads.length) { App.threads = data.threads; App.activeThread = data.activeThread; }
+      else App.threads = [];
+      ensureThreads();
+      if (data.live && !currentThread().live) currentThread().live = data.live;   // single-state files
+      App.pendingLive = currentThread().live || null;      // restored when their model is loaded (or now, if it is)
+      renderThreads();
       syncSoulFields();
+      if (App.isAwake && App.pendingLive) ensureLive().then(() => updateLiveInfo());
       
       updateTraits();
       updateMood();
@@ -3239,6 +3474,14 @@ document.getElementById('dev-toggle').addEventListener('click', () => {
   if (!b.hidden) { buildDevConsole(); refreshPromptView(); }
 });
 document.getElementById('dev-reset').addEventListener('click', () => { App.dev = { ...DEV_DEFAULTS }; buildDevConsole(); refreshPromptView(); });
+document.getElementById('new-thread-btn').addEventListener('click', newThread);
+document.getElementById('live-forget').addEventListener('click', () => {
+  showConfirmModal('Start fresh', 'Throw away their living memory (the RWKV state) and settle in again from the soul and the last few exchanges? Their memories and journal stay.', async () => {
+    App.live = null; App.pendingLive = null;
+    if (App.isAwake && App.model) { await ensureLive(); showToast('Settled in fresh', 'success'); }
+    updateLiveInfo();
+  });
+});
 document.getElementById('pip-name').addEventListener('change', (e) => {
   const name = e.target.value.trim();
   if (!App.soul || !name || name === App.soul.name) return;

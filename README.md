@@ -127,6 +127,15 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.8 — 2026-10-22 · Kehai Interim + Kham — living memory and threads (Pip's Room)
+
+RWKV is recurrent: everything it has read lives in a fixed-size state (≈2.4 MB for the 0.1B), so there's no length limit, but older things blur into gist rather than being recalled word for word. Until now Pip's Room ignored that and re-read the last few exchanges from a blank state every turn.
+
+- **Living memory:** the resident keeps one state for life. Each turn feeds only what's new: your line, plus a short *System* update when something about them changed (a new mood, a grown trait, a new goal; their name, your name or the About note → the whole intro again). Their thoughts, dreams and other loops flow into the same state (`Name (dreaming): …`), so what accumulates is what makes them *them* rather than the base model. Waking from scratch reads the system prompt and the last few exchanges once ("Settling in…"). On by default; switch off or **Start fresh** in the developer console, which also shows how many tokens the state has lived (and flags going past the model's training length).
+- **Threads (new tab in settings):** each thread is its own living memory. **+ New thread** starts a blank slate that only carries a short cross-thread memory (their 🗂 summaries from other threads); **Go back** reopens any old thread exactly where it was; tap a title to rename. A thread that fills up can just be retired, never wiped.
+- **Everything travels in the soul file:** every thread's state (≈3.2 MB each as text), which thread is active, and which conversation belongs where. A state saved by a different model is refused and they settle in fresh (the other threads stay).
+- **Test:** `tests/real/pips-room-living-memory-e2e.js` (needs Playwright), real 0.1B with a real exported soul: settled in once (133 tokens, 36 s headless); after that each reply took 5–9 s instead of re-reading. Told a secret ("my favorite color is orange"), talked about three other things, then asked: in one run *"It's orange."* (beyond the old 3-exchange window), in another *"Yes, I remember!"* (0.1B recall is hit and miss). A thought flowed into the state; a mood change arrived as `System: Right now Pip feels playful.` A new thread showed an empty chat and didn't know the color (*"Black."*); going back restored thread 1 with all 40 bubbles. The real Export button saved both threads (6.5 MB); a fresh page restored the state **bit-identical** and woke in 1 s. A state labelled for a different model was refused and re-settled (115 tokens). No page errors.
+
 ### v1.7 — 2026-10-22 · Kehai Interim + Kham — prompts and developer consoles across the Pip Suite
 
 - **Developer console in Multi-Pip Chat and Junto** (⚙ Dev), matching Pip's Room's: temperature, top-P, **top-K** (new in both samplers), presence / frequency penalty and **decay**, max tokens, context length, system prompt on/off, *Your name*, and the **exact last prompt** each model saw (and which one saw it). Multi-Pip's quick Temperature / Anti-repeat boxes stay in step with the console.
