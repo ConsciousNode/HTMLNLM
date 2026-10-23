@@ -1,6 +1,7 @@
 // Needs Playwright. Run from the repo root: node tests/real/pips-room-repeat-guard.js
 // No model needed: a stand-in model and tokenizer make the resident get stuck on purpose
-// ("Fazzani is setting a goal (" over and over), in a plain turn and in a thinking turn.
+// ("Fazzani is setting a goal (" over and over), in a plain turn and in a thinking turn, and slip
+// speaker labels into the middle of a line ("… Fazzani (thinking): …", "… System: …").
 // Checks: the turn stops after the first copy, and the state is rolled back to before the repeats
 // (the stand-in state counts forward steps, so it must equal the token count after a rollback).
 const { chromium } = require('playwright'); const path = require('path');
@@ -10,7 +11,7 @@ const { chromium } = require('playwright'); const path = require('path');
   await p.goto('file://' + path.resolve('pip-suite/pips-room.html'));
   const r = await p.evaluate(async () => {
     // stand-ins: token i decodes to WORDS[i]; the model's "state" is just a counter object
-    const WORDS = ['', ' Fazzani', ' is', ' setting', ' a', ' goal', ' (', ' hi', ' there', '.', '\n', '</think>', ' Hello', ' friend'];
+    const WORDS = ['', ' Fazzani', ' is', ' setting', ' a', ' goal', ' (', ' hi', ' there', '.', '\n', '</think>', ' Hello', ' friend', ' thinking', ')', ':', ' System'];
     App.tokenizer = { decode: ids => ids.map(i => WORDS[i] ?? '').join(''), encode: t => t.split('').map(() => 7) };
     const states = [];
     App.model = { forward: (id, st) => { const ns = { n: st.n + 1, id }; states.push(ns); return { logits: new Float32Array(WORDS.length), state: ns }; },
@@ -32,6 +33,17 @@ const { chromium } = require('playwright'); const path = require('path');
     script = [7, 8, ...cycle, ...cycle, ...cycle, ...cycle, 12, 13, 10, 10];
     const t2 = await liveTurn('\nUser: hi (think)\n\nAssistant:', 40, 0.8, { think: true, endOn: '\n\n' });
     out.think = { thought: t2.thought, answer: t2.text, cuts: App.repeatCuts };
+    // 2b) a thought that slips one of their loop labels in mid-line, as seen live:
+    //     "User wants Fazzani's frogs word. Fazzani (thinking): A thought surfaces…"
+    script = [7, 8, 7, 8, 9, 1, 6, 14, 15, 16, 12, 13, 10, 10];
+    before = App.live.tokens;
+    const t2b = await liveTurn('\nUser: hi (think)\n\nAssistant:', 40, 0.8, { think: true, endOn: '\n\n' });
+    out.inlineLabel = { thought: t2b.thought, speakerCuts: App.speakerCuts, stateMatchesCount: App.live.state.n === App.live.tokens };
+    // 2c) a System line in the middle of an answer
+    App.dev.think = false;
+    script = [12, 13, 9, 17, 16, 2, 10, 10];
+    const t2c = await liveTurn('\nUser: hi\n\nAssistant:', 40, 0.8, { endOn: '\n\n' });
+    out.inlineSystem = { text: t2c.text, speakerCuts: App.speakerCuts, stateMatchesCount: App.live.state.n === App.live.tokens };
     // 3) a line that repeats only twice is left alone
     App.dev.think = false;
     script = [12, 13, ...cycle, ...cycle, 9, 10];
