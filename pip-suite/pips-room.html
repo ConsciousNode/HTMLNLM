@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="consciousnode-app" content="true">
 <title>Pip's Room - RWKV-v7</title>
 <style>
@@ -41,10 +41,14 @@ html, body {
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 #app-container {
+  /* pinned to what's actually visible: on phones (and in a phone browser's "desktop site" mode)
+     100vh can be taller than the screen, which pushed the message bar off the bottom */
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: 100vw;
+  height: 100dvh;
 }
 
 header {
@@ -88,6 +92,7 @@ header h1 {
   display: flex;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
 #sidebar {
@@ -347,6 +352,7 @@ header h1 {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
 #conversation-area {
@@ -439,7 +445,9 @@ header h1 {
 }
 
 #input-area {
+  flex-shrink: 0;
   padding: 16px 20px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   display: flex;
@@ -498,6 +506,7 @@ header h1 {
 }
 
 #inner-life-panel {
+  flex-shrink: 0;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   max-height: 200px;
@@ -585,7 +594,9 @@ header h1 {
   top: 0;
   right: -400px;
   width: 400px;
+  max-width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
   z-index: 100;
