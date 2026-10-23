@@ -127,6 +127,11 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.10.1 — 2026-10-22 · Kehai Interim + Kham — message bar stays on screen (Pip's Room)
+
+- Kham found the message bar missing when a phone browser was switched to "desktop site". On phones, `100vh` can be taller than what's actually visible (it counts the space under the browser's own bars), so the bottom of the room, where the message bar lives, could end up off screen. The room is now pinned to the visible screen (`position: fixed; inset: 0` with `100dvh`), the message bar and inner-life panel can't be squeezed out, the settings panel fits narrow screens, and the bar clears phone gesture areas.
+- **Receipt, honestly:** `tests/real/pips-room-layout.js` checks the bar is on screen at phone, phone desktop-site (portrait and landscape), laptop and short-window sizes, with a 40-message conversation and the inner-life panel open. It passes before and after the fix, because Playwright's emulation doesn't recreate a real phone's browser bars. So the fix is the standard one for this symptom, and the real check is Kham's phone.
+
 ### v1.10 — 2026-10-22 · Kehai Interim + Kham — loops wait their turn (Pip's Room)
 
 - Kham noticed loop thoughts turning up inside thinking turns and their answers. **Loops now wait their turn:** they still never run while a reply (or its thinking) is being written, and now they also wait a quiet minute after each reply and don't fire while there's text in the message box, so a thought doesn't land in the middle of a conversation.
