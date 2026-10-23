@@ -223,6 +223,13 @@ header h1 span {
   color: var(--error);
 }
 
+.pip-note {
+  width: 24px; height: 24px; border-radius: 4px; background: transparent; border: none;
+  color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; transition: all 0.2s;
+}
+.pip-note:hover { background: rgba(20, 184, 166, 0.12); color: var(--accent); }
+
 #sidebar-footer {
   padding: 16px;
   border-top: 1px solid var(--border);
@@ -622,6 +629,22 @@ header h1 span {
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/* developer console (shared look across the Pip Suite) */
+.dev-panel { border-top: 1px solid var(--border); padding: 10px 16px 14px; font-size: 12px; }
+.dev-panel[hidden] { display: none; }
+.dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px 14px; }
+.dev-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--text-muted, #9aa); }
+.dev-row small { display: block; font-size: 10px; opacity: 0.7; }
+.dev-row input[type=number], .dev-row input[type=text] { width: 76px; background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-radius: 5px; color: inherit; font-family: monospace; font-size: 12px; padding: 4px 6px; }
+.dev-row input[type=text] { width: 110px; font-family: inherit; }
+.dev-row input[type=checkbox] { width: 16px; height: 16px; }
+.dev-prompt-label { margin: 10px 0 4px; color: var(--text-muted, #9aa); }
+.dev-prompt { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0;
+  font-size: 11px; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; }
+.dev-toggle-btn { cursor: pointer; }
+
 </style>
 </head>
 <body>
@@ -703,7 +726,13 @@ header h1 span {
           </div>
           <div id="action-buttons">
             <button class="btn primary" id="auto-chat-btn">Auto Chat</button>
+            <button class="btn dev-toggle-btn" id="dev-btn" title="Developer console">⚙ Dev</button>
           </div>
+        </div>
+        <div class="dev-panel" id="dev-panel" hidden>
+          <div class="dev-grid" id="dev-fields"></div>
+          <div class="dev-prompt-label">Last prompt sent <span id="dev-prompt-who"></span></div>
+          <pre class="dev-prompt" id="dev-prompt">(nothing yet)</pre>
         </div>
         <div id="input-area">
           <textarea id="message-input" placeholder="Type a message to interrupt or join the conversation..." rows="1"></textarea>
@@ -1272,6 +1301,45 @@ async function loadRWKV7File(file, log) {
 }
 function uniqueName(name, taken) { let n = name, k = 2; while (taken.some(x => x.name === n)) n = `${name} #${k++}`; return n; }
 
+
+// ── Developer console (shared with Pip's Room): every knob for the voice, and the exact last prompt ──
+function buildDevPanel(boxId, DEV, fields, onChange) {
+  const box = document.getElementById(boxId); box.innerHTML = '';
+  for (const f of fields) {
+    const [key, label, a, b, step, hint] = f;
+    const row = document.createElement('label'); row.className = 'dev-row'; row.title = hint || '';
+    row.innerHTML = `<span>${label}${hint ? `<small>${hint}</small>` : ''}</span>`;
+    const inp = document.createElement('input');
+    if (a === 'text') { inp.type = 'text'; inp.value = DEV[key] || ''; inp.placeholder = b || '';
+      inp.onchange = () => { DEV[key] = inp.value.trim(); onChange && onChange(key); }; }
+    else if (a === 'bool') { inp.type = 'checkbox'; inp.checked = !!DEV[key];
+      inp.onchange = () => { DEV[key] = inp.checked; onChange && onChange(key); }; }
+    else { inp.type = 'number'; inp.min = a; inp.max = b; inp.step = step; inp.value = DEV[key];
+      inp.onchange = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) DEV[key] = Math.min(b, Math.max(a, v)); inp.value = DEV[key]; onChange && onChange(key); }; }
+    inp.dataset.key = key; row.appendChild(inp); box.appendChild(row);
+  }
+}
+
+const DEV = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996, maxTokens: 60,
+              contextMessages: 5, systemPrompt: true, userName: '', lastPrompt: '', lastWho: '' };
+const DEV_FIELDS = [
+  ['temperature', 'Temperature', 0.05, 2, 0.05], ['topP', 'Top-P', 0.05, 1, 0.05], ['topK', 'Top-K', 0, 500, 1, '0 = off'],
+  ['presence', 'Presence', 0, 2, 0.1, 'anti-repeat'], ['frequency', 'Frequency', 0, 2, 0.1, 'anti-repeat'], ['decay', 'Penalty decay', 0.9, 1, 0.001],
+  ['maxTokens', 'Max tokens', 10, 300, 10], ['contextMessages', 'Context lines', 1, 20, 1, 'lines each Pip sees'],
+  ['systemPrompt', 'System prompt', 'bool'], ['userName', 'Your name', 'text', 'User'],
+];
+function syncQuickControls(key) {   // the quick Temperature / Anti-repeat boxes and the console stay in step
+  if (key === 'temperature') document.getElementById('chat-temp').value = DEV.temperature;
+  if (key === 'presence') document.getElementById('chat-rep').value = DEV.presence;
+}
+// "System: You are Goose. You're in a chat room with Gander and Kham." + this Pip's own note (✎ in the list)
+function pipSystemBlock(pip, others) {
+  const you = DEV.userName || 'a friend';
+  const names = [...others.map(o => o.name), you];
+  return `System: You are ${pip.name}. You are in a chat room with ${names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.at(-1) : names[0]}.` +
+         (pip.about ? ' ' + pip.about.trim().replace(/\s*\n\s*/g, ' ') : '') + '\n';
+}
+
 const COLORS = ['#14b8a6', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
 
 class TMAC {
@@ -1600,7 +1668,7 @@ function makeRepTracker(opts) {
   };
 }
 
-function sampleLogits(logits, temp, topP) {
+function sampleLogits(logits, temp, topP, topK = 0) {
   if (temp <= 0.01) {
     let max = -Infinity, best = 0;
     for(let i=0; i<logits.length; i++) { if(logits[i]>max){ max=logits[i]; best=i; } }
@@ -1620,6 +1688,13 @@ function sampleLogits(logits, temp, topP) {
     sum += probs[i];
   }
   for(let i=0; i<logits.length; i++) probs[i] /= sum;
+
+  if (topK > 0 && topK < probs.length) {            // keep only the K likeliest tokens
+    const kth = Float32Array.from(probs).sort()[probs.length - topK];
+    let s2 = 0;
+    for (let i = 0; i < probs.length; i++) { if (probs[i] < kth) probs[i] = 0; s2 += probs[i]; }
+    for (let i = 0; i < probs.length; i++) probs[i] /= (s2 || 1);
+  }
 
   if (topP < 1.0) {
     const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a,b) => b.p - a.p);
@@ -1773,11 +1848,26 @@ const ChatRoom = {
         item.innerHTML = `
           <div class="pip-avatar" style="background: ${COLORS[idx % COLORS.length]}">${pip.name[0].toUpperCase()}</div>
           <div class="pip-info">
-            <div class="pip-name">${pip.name}</div>
+            <div class="pip-name" title="Tap to rename" style="cursor:text">${pip.name}</div>
             <div class="pip-meta">${pip.version.toUpperCase()} | ${pip.params}</div>
           </div>
+          <button class="pip-note" title="What should ${pip.name} know about themselves?">✎</button>
           <button class="pip-remove" data-id="${pip.id}">x</button>
         `;
+        item.querySelector('.pip-name').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const v = (window.prompt('Rename this Pip:', pip.name) || '').trim();
+          if (v && v !== pip.name) {
+            const old = pip.name; pip.name = uniqueName(v, this.pips.filter(x => x !== pip));
+            this.conversationHistory.forEach(m => { if (m.sender === old) m.sender = pip.name; });
+            log(`${old} is now ${pip.name}`, 'info'); this.renderPipList();
+          }
+        });
+        item.querySelector('.pip-note').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const v = window.prompt(`A note for ${pip.name} (added to their system prompt). Empty = none.`, pip.about || '');
+          if (v !== null) { pip.about = v.trim(); log(`${pip.name}'s note ${pip.about ? 'updated' : 'cleared'}`, 'info'); }
+        });
         item.querySelector('.pip-remove').addEventListener('click', (e) => {
           e.stopPropagation();
           this.removePip(pip.id);
@@ -1840,26 +1930,24 @@ const ChatRoom = {
       res = pip.model.forward(ids[i], state); state = res.state;
       if (real) await yieldToMain();
     }
-    const maxTokens = 60, gen = [];
+    const maxTokens = DEV.maxTokens, gen = [];
     // Repetition control (RWKV-7 only). Seeded with this speaker's own recent lines, so a
     // Pip that keeps saying the same thing turn after turn gets nudged off it, while echoing
     // the *other* speaker (answering their question, using their words) stays free.
     let rep = null;
-    const rpv = parseFloat((document.getElementById('chat-rep') || {}).value);
-    const repPenalty = Number.isFinite(rpv) ? rpv : REP_DEFAULTS.presence;   // read live, also for typed-in messages
-    if (real && repPenalty > 0) {
-      rep = makeRepTracker({ presence: repPenalty, frequency: repPenalty });
+    if (real && (DEV.presence > 0 || DEV.frequency > 0)) {
+      rep = makeRepTracker({ presence: DEV.presence, frequency: DEV.frequency, decay: DEV.decay });
       for (const m of this.conversationHistory.slice(-8))
         if (m.sender === pip.name) for (const id of pip.tokenizer.encode(m.text)) rep.add(id);
     }
     for (let i = 0; i < maxTokens; i++) {
       const logits = rep ? rep.apply(res.logits) : res.logits;
-      let next = sampleLogits(logits, this.temp, 0.9);
+      let next = sampleLogits(logits, DEV.temperature, DEV.topP, DEV.topK);
       // Real models: a line break before the Pip has said anything would end the turn with an
       // empty line, and empty lines in the context make the next one likelier. Redraw instead.
       if (real && !pip.tokenizer.decode(gen).trim())
         for (let k = 0; k < 8 && (next === 0 || pip.tokenizer.decode([next]).includes('\n')); k++)
-          next = sampleLogits(logits, this.temp, 0.9);
+          next = sampleLogits(logits, DEV.temperature, DEV.topP, DEV.topK);
       if (real && next === 0) break;                               // RWKV World token 0 = end of text
       gen.push(next);
       if (rep) { rep.step(); rep.add(next); }
@@ -1871,9 +1959,9 @@ const ChatRoom = {
     return (real ? text.split('\n')[0] : text).trim();
   },
   
-  buildContext(pip, recentMessages = 5) {
+  buildContext(pip, recentMessages = DEV.contextMessages) {
     const recent = this.conversationHistory.slice(-recentMessages);
-    let context = '';
+    let context = pip.kind === 'rwkv7' && DEV.systemPrompt ? pipSystemBlock(pip, this.pips.filter(p => p !== pip)) : '';
     
     if (this.topic !== 'free' && this.conversationHistory.length === 0) {
       context = this.topics[this.topic] + '\n\n';
@@ -1881,11 +1969,12 @@ const ChatRoom = {
     
     recent.forEach(m => {
       if (m.sender === 'system') return;
-      const name = m.sender === 'You' ? 'User' : m.sender;
+      const name = m.sender === 'You' ? (DEV.userName || 'User') : m.sender;
       context += `${name}: ${m.text}\n`;
     });
     
     context += `${pip.name}:`;
+    DEV.lastPrompt = context; DEV.lastWho = pip.name; refreshDevPrompt();
     return context;
   },
   
@@ -1901,6 +1990,7 @@ const ChatRoom = {
     this.maxTurns = parseInt(document.getElementById('chat-turns').value) || 10;
     this.delay = parseInt(document.getElementById('chat-delay').value) || 500;
     this.temp = parseFloat(document.getElementById('chat-temp').value) || 0.85;
+    DEV.temperature = this.temp;
     this.topic = document.getElementById('chat-topic').value;
     
     document.getElementById('upload-zone').classList.add('hidden');
@@ -2183,6 +2273,17 @@ document.getElementById('console-clear').addEventListener('click', () => {
 });
 
 log('Multi-Pip Chat Room ready. Add pips to begin!', 'info');
+function refreshDevPrompt() {
+  const pre = document.getElementById('dev-prompt'); if (!pre) return;
+  pre.textContent = DEV.lastPrompt || '(nothing yet)';
+  document.getElementById('dev-prompt-who').textContent = DEV.lastWho ? `(to ${DEV.lastWho})` : '';
+}
+document.getElementById('dev-btn').addEventListener('click', () => {
+  const p = document.getElementById('dev-panel'); p.hidden = !p.hidden;
+  if (!p.hidden) { buildDevPanel('dev-fields', DEV, DEV_FIELDS, syncQuickControls); refreshDevPrompt(); }
+});
+document.getElementById('chat-temp').addEventListener('change', e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) DEV.temperature = v; });
+document.getElementById('chat-rep').addEventListener('change', e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { DEV.presence = v; DEV.frequency = v; } });
 </script>
 </body>
 </html>
