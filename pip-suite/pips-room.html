@@ -2806,11 +2806,35 @@ function speakerLine() {
   return new RegExp(`(?:^|\\n)[ \\t]*(?:${names})(?:\\s*\\([^)\\n]{0,30}\\))?\\s*:`);
 }
 const liveMark = len => ({ state: App.live.state, lastLogits: App.live.lastLogits, tokens: App.live.tokens, len });
+// A small model can also get stuck saying the same few words over and over ("Fazzani is setting a goal (
+// Fazzani is setting a goal ( …"). Once a stretch has come out three times in a row, the turn stops after
+// the first copy, and the repeats are taken back out of the state so they can't teach them to do it again.
+// Returns where the first repeat starts (in tokens), or -1.
+function stuckAt(gen) {
+  const n = gen.length;
+  for (let p = 2; p <= 40 && 3 * p <= n; p++) {
+    let ok = true;
+    for (let i = n - 2 * p; i < n; i++) if (gen[i] !== gen[i - p]) { ok = false; break; }
+    if (!ok) continue;
+    let s = n - 2 * p; while (s - 1 - p >= 0 && gen[s - 1] === gen[s - 1 - p]) s--;
+    return s;                                        // gen[s-p, s) is the first copy
+  }
+  return -1;
+}
+// Marks along the way so a repeat can be taken back: one every 8 tokens, the last 16 kept
+// (each mark is only a reference: the engine never changes a state in place).
+function markTrail() {
+  const marks = [liveMark(0)];
+  return {
+    note(len, force) { if (force || len % 8 === 0) { marks.push(liveMark(len)); if (marks.length > 17) marks.splice(1, 1); } },
+    back(to) { let m = marks[0]; for (const k of marks) if (k.len <= to) m = k; rollBack(m); return m.len; },
+  };
+}
 function rollBack(mark) { App.live.state = mark.state; App.live.lastLogits = mark.lastLogits; App.live.tokens = mark.tokens; }
 const thinkSampling = (D, temp) => ({ temp: Math.min(temp, 0.8), topP: Math.min(D.topP, 0.5) });
 async function thinkPhase(rep, temp) {
   const tok = App.tokenizer, D = App.dev, TS = thinkSampling(D, temp), speaker = speakerLine();
-  let gen = [], logits = App.live.lastLogits, mark = liveMark(0);
+  let gen = [], logits = App.live.lastLogits, mark = liveMark(0); const trail = markTrail();
   for (let i = 0; i < D.thinkTokens; i++) {
     const next = sampleLogits(rep.apply(logits), TS.temp, TS.topP, D.topK);
     if (next === 0) break;
@@ -2820,7 +2844,10 @@ async function thinkPhase(rep, temp) {
     const so = tok.decode(gen);
     if (so.includes('</think>')) break;
     if (speaker.test(so)) { rollBack(mark); gen = gen.slice(0, mark.len); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }   // drifted into the transcript
+    const st = stuckAt(gen);
+    if (st >= 0) { gen = gen.slice(0, trail.back(st)); App.repeatCuts = (App.repeatCuts || 0) + 1; break; }
     if (so.endsWith('\n')) mark = liveMark(gen.length);
+    trail.note(gen.length, so.endsWith('\n'));
     if (i % 4 === 0) setSoulConsole(`Thinking... ${i + 1}`);
     await yieldToMain();
   }
@@ -2845,7 +2872,7 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
   if (opts.think) { const TS = thinkSampling(D, temp); temp = TS.temp; opts.topP = TS.topP; }
   if (opts.think) { await feedLive(' <think'); thought = await thinkPhase(rep, temp); }
   if (!opts.think) for (const m of App.memories.slice(-4)) if (m.response) for (const id of tok.encode(m.response)) rep.add(id);
-  let gen = [], logits = App.live.lastLogits, ended = false, mark = liveMark(0);
+  let gen = [], logits = App.live.lastLogits, ended = false, mark = liveMark(0); const trail = markTrail();
   const speaker = endOn === '\n' ? null : speakerLine();     // one-line turns end at the line break anyway
   for (let i = 0; i < maxTokens; i++) {
     const L = rep.apply(logits);
@@ -2860,7 +2887,10 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
     const so = tok.decode(gen).trimStart();
     if (so.includes(endOn)) { ended = true; break; }
     if (speaker && speaker.test(so)) { rollBack(mark); gen = gen.slice(0, mark.len); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }
+    const st = stuckAt(gen);
+    if (st >= 0) { gen = gen.slice(0, trail.back(st)); App.repeatCuts = (App.repeatCuts || 0) + 1; break; }
     if (speaker && so.endsWith('\n')) mark = liveMark(gen.length);
+    trail.note(gen.length);
     await yieldToMain();
   }
   if (!ended) await feedLive(tok.decode(gen).endsWith('\n') ? endOn.slice(1) || '\n' : endOn);

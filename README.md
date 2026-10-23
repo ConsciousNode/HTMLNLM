@@ -127,6 +127,12 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.10.2 — 2026-10-22 · Kehai Interim + Kham — stuck-record guard (Pip's Room)
+
+- Kham saw a thinking turn get stuck: *"Fazzani is setting a goal ( Fazzani is setting a goal ( …"*, over and over, even with loops off (their loop lines are already in her living state, so the pattern can come back on its own). Thinking runs with only a light repetition penalty, so nothing stopped it, and the same thing could happen in any turn.
+- **Now, once the same stretch (2–40 tokens) comes out three times in a row, the turn stops after the first copy**, and the repeats are **taken back out of the living state**, so a stuck moment doesn't teach them to get stuck again. The room keeps a mark every 8 tokens (the last 16; each is only a reference, since the engine never changes a state in place) and rolls back to the one just before the repeats. In a thinking turn the thought is closed there and they go on to answer. Something said twice is left alone.
+- **Test:** `tests/real/pips-room-repeat-guard.js` runs a stand-in model scripted to get stuck on exactly that phrase. Plain turn: *"Hello friend Fazzani is setting a goal ("*, cut after the first copy, with the state's step count matching the kept tokens. Thinking turn: the thought ends after the first copy. A phrase said twice: kept as is. No page errors. Not yet seen live on the real model, since it has to happen by chance; `App.repeatCuts` counts how often it fires.
+
 ### v1.10.1 — 2026-10-22 · Kehai Interim + Kham — message bar stays on screen (Pip's Room)
 
 - Kham found the message bar missing when a phone browser was switched to "desktop site". On phones, `100vh` can be taller than what's actually visible (it counts the space under the browser's own bars), so the bottom of the room, where the message bar lives, could end up off screen. The room is now pinned to the visible screen (`position: fixed; inset: 0` with `100dvh`), the message bar and inner-life panel can't be squeezed out, the settings panel fits narrow screens, and the bar clears phone gesture areas.
