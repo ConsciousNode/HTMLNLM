@@ -2796,15 +2796,20 @@ async function ensureLive() {
 // Reasoning wants steadier sampling than chat (careful thinking repeats words on purpose), so
 // thinking turns use top-P ≤ 0.5, temperature ≤ 0.8 and only a light penalty, close to the model
 // card's settings. These caps apply to thinking turns only.
-// A thinking turn can run several lines, so a small model may drift into writing the next line of the
-// transcript itself: "User: …", or one of their own loop lines ("Wren (dreaming): …"). That isn't
-// theirs to say in this turn, so a new speaker line ends the turn and is taken back out of the state.
-// (The engine never changes a state in place, so keeping the one from the last line break is enough.)
-function speakerLine() {
-  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// A small model may drift into writing the transcript itself: "User: …", "System: …", or one of their own
+// loop lines ("Wren (dreaming): …"), at the start of a line or in the middle of one (seen in a real thought:
+// "User wants Fazzani's frogs word. Fazzani (thinking): A thought surfaces…"). That isn't theirs to say in
+// this turn, so it ends the turn there and is taken back out of the state. Returns where it starts, or -1.
+function speakerAt(text) {
+  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), me = esc(App.soul?.name || 'Resident');
   const names = ['User', 'Assistant', 'System', App.soul?.name || 'Resident', userLabel()].filter(Boolean).map(esc).join('|');
-  return new RegExp(`(?:^|\\n)[ \\t]*(?:${names})(?:\\s*\\([^)\\n]{0,30}\\))?\\s*:`);
+  const re = new RegExp(`(?:^|\\n)[ \\t]*(?:${names})(?:\\s*\\([^)\\n]{0,30}\\))?\\s*:`   // a new line with a speaker
+                      + `|(?:${me})\\s*\\([^)\\n]{0,30}\\)\\s*:`                              // one of their loop labels, anywhere
+                      + `|\\bSystem\\s*:`);                                                  // a System line, anywhere
+  const m = re.exec(text); return m ? m.index : -1;
 }
+// which token a character position falls in
+function tokenAtChar(gen, ci) { const tok = App.tokenizer; for (let k = 1; k <= gen.length; k++) if (tok.decode(gen.slice(0, k)).length > ci) return k - 1; return gen.length; }
 const liveMark = len => ({ state: App.live.state, lastLogits: App.live.lastLogits, tokens: App.live.tokens, len });
 // A small model can also get stuck saying the same few words over and over ("Fazzani is setting a goal (
 // Fazzani is setting a goal ( …"). Once a stretch has come out three times in a row, the turn stops after
@@ -2812,7 +2817,7 @@ const liveMark = len => ({ state: App.live.state, lastLogits: App.live.lastLogit
 // Returns where the first repeat starts (in tokens), or -1.
 function stuckAt(gen) {
   const n = gen.length;
-  for (let p = 2; p <= 40 && 3 * p <= n; p++) {
+  for (let p = 2; p <= 64 && 3 * p <= n; p++) {
     let ok = true;
     for (let i = n - 2 * p; i < n; i++) if (gen[i] !== gen[i - p]) { ok = false; break; }
     if (!ok) continue;
@@ -2821,20 +2826,23 @@ function stuckAt(gen) {
   }
   return -1;
 }
-// Marks along the way so a repeat can be taken back: one every 8 tokens, the last 16 kept
+// Marks along the way so a repeat can be taken back: one every 8 tokens, the last 24 kept
 // (each mark is only a reference: the engine never changes a state in place).
 function markTrail() {
   const marks = [liveMark(0)];
   return {
-    note(len, force) { if (force || len % 8 === 0) { marks.push(liveMark(len)); if (marks.length > 17) marks.splice(1, 1); } },
-    back(to) { let m = marks[0]; for (const k of marks) if (k.len <= to) m = k; rollBack(m); return m.len; },
+    note(len) { if (len % 8 === 0) { marks.push(liveMark(len)); if (marks.length > 25) marks.splice(1, 1); } },
+    // back to the mark at or before `to`, then re-read the few tokens up to `to` so nothing good is lost
+    back(to, gen) { let m = marks[0]; for (const k of marks) if (k.len <= to) m = k; rollBack(m);
+      for (let i = m.len; i < to; i++) { const r = App.model.forward(gen[i], App.live.state); App.live.state = r.state; App.live.lastLogits = r.logits; App.live.tokens++; }
+      return to; },
   };
 }
 function rollBack(mark) { App.live.state = mark.state; App.live.lastLogits = mark.lastLogits; App.live.tokens = mark.tokens; }
 const thinkSampling = (D, temp) => ({ temp: Math.min(temp, 0.8), topP: Math.min(D.topP, 0.5) });
 async function thinkPhase(rep, temp) {
-  const tok = App.tokenizer, D = App.dev, TS = thinkSampling(D, temp), speaker = speakerLine();
-  let gen = [], logits = App.live.lastLogits, mark = liveMark(0); const trail = markTrail();
+  const tok = App.tokenizer, D = App.dev, TS = thinkSampling(D, temp);
+  let gen = [], logits = App.live.lastLogits; const trail = markTrail();
   for (let i = 0; i < D.thinkTokens; i++) {
     const next = sampleLogits(rep.apply(logits), TS.temp, TS.topP, D.topK);
     if (next === 0) break;
@@ -2843,11 +2851,11 @@ async function thinkPhase(rep, temp) {
     App.live.state = r.state; App.live.lastLogits = r.logits; App.live.tokens++; logits = r.logits;
     const so = tok.decode(gen);
     if (so.includes('</think>')) break;
-    if (speaker.test(so)) { rollBack(mark); gen = gen.slice(0, mark.len); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }   // drifted into the transcript
+    const sp = speakerAt(so);                                   // drifted into the transcript
+    if (sp >= 0) { gen = gen.slice(0, trail.back(tokenAtChar(gen, sp), gen)); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }
     const st = stuckAt(gen);
-    if (st >= 0) { gen = gen.slice(0, trail.back(st)); App.repeatCuts = (App.repeatCuts || 0) + 1; break; }
-    if (so.endsWith('\n')) mark = liveMark(gen.length);
-    trail.note(gen.length, so.endsWith('\n'));
+    if (st >= 0) { gen = gen.slice(0, trail.back(st, gen)); App.repeatCuts = (App.repeatCuts || 0) + 1; break; }
+    trail.note(gen.length);
     if (i % 4 === 0) setSoulConsole(`Thinking... ${i + 1}`);
     await yieldToMain();
   }
@@ -2872,8 +2880,7 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
   if (opts.think) { const TS = thinkSampling(D, temp); temp = TS.temp; opts.topP = TS.topP; }
   if (opts.think) { await feedLive(' <think'); thought = await thinkPhase(rep, temp); }
   if (!opts.think) for (const m of App.memories.slice(-4)) if (m.response) for (const id of tok.encode(m.response)) rep.add(id);
-  let gen = [], logits = App.live.lastLogits, ended = false, mark = liveMark(0); const trail = markTrail();
-  const speaker = endOn === '\n' ? null : speakerLine();     // one-line turns end at the line break anyway
+  let gen = [], logits = App.live.lastLogits, ended = false; const trail = markTrail();
   for (let i = 0; i < maxTokens; i++) {
     const L = rep.apply(logits);
     let next = sampleLogits(L, temp, opts.topP ?? D.topP, D.topK);
@@ -2886,10 +2893,10 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
     App.live.state = r.state; App.live.lastLogits = r.logits; App.live.tokens++; logits = r.logits;
     const so = tok.decode(gen).trimStart();
     if (so.includes(endOn)) { ended = true; break; }
-    if (speaker && speaker.test(so)) { rollBack(mark); gen = gen.slice(0, mark.len); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }
+    const raw = tok.decode(gen), sp = speakerAt(raw);
+    if (sp >= 0) { gen = gen.slice(0, trail.back(tokenAtChar(gen, sp), gen)); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }
     const st = stuckAt(gen);
-    if (st >= 0) { gen = gen.slice(0, trail.back(st)); App.repeatCuts = (App.repeatCuts || 0) + 1; break; }
-    if (speaker && so.endsWith('\n')) mark = liveMark(gen.length);
+    if (st >= 0) { gen = gen.slice(0, trail.back(st, gen)); App.repeatCuts = (App.repeatCuts || 0) + 1; break; }
     trail.note(gen.length);
     await yieldToMain();
   }
