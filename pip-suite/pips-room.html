@@ -597,6 +597,22 @@ header h1 {
   right: 0;
 }
 #settings-panel { max-width: 100vw; }
+.settings-row small, .dev-row small, .dev-label small { display: block; font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.soul-field { gap: 10px; }
+.soul-field input, .soul-field textarea, .dev-row input[type=number] {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main);
+  font-family: var(--font-mono); font-size: 12px; padding: 6px 8px;
+}
+.soul-field input { width: 140px; }
+.settings-row.soul-about { flex-direction: column; align-items: stretch; }
+.soul-about > span { text-align: left; }
+.soul-about textarea { width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit; font-size: 13px; }
+.dev-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; font-size: 13px; color: var(--text-soft); }
+.dev-row input[type=number] { width: 80px; }
+.dev-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+.dev-label { font-size: 12px; color: var(--text-muted); margin: 14px 0 6px; }
+#dev-prompt { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+  font-size: 11px; color: var(--text-soft); white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; margin: 0; }
 #settings-tabs { display: flex; gap: 4px; }
 .settings-tab {
   background: none; border: 1px solid transparent; border-radius: 6px;
@@ -1054,6 +1070,14 @@ header h1 {
 
     <div class="settings-section">
       <div class="settings-section-title">Soul</div>
+      <div class="settings-row soul-field">
+        <span>Your name <small>what they call you (empty = "friend")</small></span>
+        <input type="text" id="user-name" placeholder="friend">
+      </div>
+      <div class="settings-row soul-field soul-about">
+        <span>About them <small>a note added to every conversation</small></span>
+        <textarea id="about-note" rows="3" placeholder="e.g. They live in a little room on a phone and love frogs."></textarea>
+      </div>
       <div class="settings-row">
         <span>Genesis Date</span>
         <span class="settings-value" id="setting-genesis">-</span>
@@ -1132,6 +1156,15 @@ header h1 {
       </div>
       <div class="settings-row">
         <button class="settings-btn danger" id="clear-all-btn">Clear All Data</button>
+      </div>
+    </div>
+    <div class="settings-section" id="dev-section">
+      <div class="settings-section-title" id="dev-toggle" style="cursor:pointer">Developer console <span id="dev-caret">▸</span></div>
+      <div id="dev-body" hidden>
+        <div id="dev-fields"></div>
+        <div class="settings-row"><button class="settings-btn" id="dev-reset">Reset to defaults</button></div>
+        <div class="dev-label">Last prompt sent <small>(exactly what the model saw)</small></div>
+        <pre id="dev-prompt"></pre>
       </div>
     </div>
   </div>
@@ -2136,7 +2169,7 @@ class LanguageModel {
   }
 }
 
-function sampleLogits(logits, temp, topP) {
+function sampleLogits(logits, temp, topP, topK = 0) {
   if (temp <= 0.01) {
     let max = -Infinity, best = 0;
     for(let i=0; i<logits.length; i++) { if(logits[i]>max){ max=logits[i]; best=i; } }
@@ -2156,6 +2189,13 @@ function sampleLogits(logits, temp, topP) {
     sum += probs[i];
   }
   for(let i=0; i<logits.length; i++) probs[i] /= sum;
+
+  if (topK > 0 && topK < probs.length) {            // keep only the K likeliest tokens
+    const kth = Float32Array.from(probs).sort()[probs.length - topK];
+    let s2 = 0;
+    for (let i = 0; i < probs.length; i++) { if (probs[i] < kth) probs[i] = 0; s2 += probs[i]; }
+    for (let i = 0; i < probs.length; i++) probs[i] /= (s2 || 1);
+  }
 
   if (topP < 1.0) {
     const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a,b) => b.p - a.p);
@@ -2353,7 +2393,7 @@ function addMessage(text, sender, ts) {
   
   const senderEl = document.createElement('div');
   senderEl.className = 'message-sender';
-  senderEl.textContent = sender === 'pip' ? App.soul?.name || 'Resident' : 'You';
+  senderEl.textContent = sender === 'pip' ? App.soul?.name || 'Resident' : (App.userName || 'You');
   
   const textEl = document.createElement('div');
   textEl.textContent = text;
@@ -2427,7 +2467,7 @@ async function generateResponse(prompt, maxTokens = 80, temp = 0.85) {
   let response = '', lastId = 0;
   for (let i = 0; i < maxTokens; i++) {
     if (i > 0) { res = App.model.forward(lastId, state); state = res.state; }
-    lastId = sampleLogits(res.logits, temp, 0.9);
+    lastId = sampleLogits(res.logits, temp, App.dev.topP, App.dev.topK);
     const char = App.tokenizer.decode([lastId]);
     response += char;
     App.tokensGenerated++;
@@ -2449,20 +2489,22 @@ async function handleUserMessage() {
   addMessage(text, 'user');
   
   const pipName = App.soul?.name || 'Resident';
+  const you = userLabel();
   let prompt = `${pipName} is having a conversation.\nUser: ${text}\n${pipName}:`;
   if (App.kind === 'rwkv7') {
-    // real models can follow a conversation, so give her the last few exchanges
-    const recent = App.memories.filter(m => m.type === 'conversation').slice(-3);
-    prompt = `${pipName} is having a conversation.\n` +
-      recent.map(m => `User: ${m.user}\n${pipName}: ${m.response}\n`).join('') + `User: ${text}\n${pipName}:`;
+    // real models can follow a conversation: system block, the last few exchanges, then you
+    const recent = App.dev.contextTurns > 0 ? App.memories.filter(m => m.type === 'conversation').slice(-App.dev.contextTurns) : [];
+    prompt = systemBlock() +
+      recent.map(m => `${you}: ${m.user}\n${pipName}: ${m.response}\n`).join('') + `${you}: ${text}\n${pipName}:`;
   }
+  App.lastPrompt = prompt; refreshPromptView();
   
   showTypingIndicator();
   App.isGenerating = true;
   while (App.loopBusy) await new Promise(r => setTimeout(r, 200));   // let a running loop finish first
   
   const startTime = Date.now();
-  const response = await generateResponse(prompt, 80, 0.85);
+  const response = await generateResponse(prompt, App.dev.maxTokens, App.dev.temperature);
   const duration = Date.now() - startTime;
   
   hideTypingIndicator();
@@ -2475,6 +2517,8 @@ async function handleUserMessage() {
     timestamp: Date.now(),
     mood: App.soul?.mood || 'neutral'
   });
+  
+  growSoul('chat', text, response);
   
   App.conversationCount++;
   document.getElementById('setting-conversations').textContent = App.conversationCount;
@@ -2492,6 +2536,131 @@ async function handleUserMessage() {
   }
 }
 
+
+// ── Settings for the voice (the developer console edits these; saved with the soul) ──
+const DEV_DEFAULTS = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996,
+                       maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true };
+App.dev = { ...DEV_DEFAULTS };
+App.userName = '';           // what the resident calls you; empty = "friend" in the prompt, "User" as the label
+App.about = '';              // a free note prepended to every conversation
+App.lastPrompt = '';
+const userLabel = () => App.userName || 'User';
+
+// ── System prompt ──
+// "You are [name]. You are talking with [you]." + who they are right now (traits, values, mood,
+// goals) + your note. A base model takes this as scene-setting, not rules.
+const TRAIT_WORDS = { curiosity: 'curious', empathy: 'caring', tenacity: 'determined', creativity: 'creative',
+                      playfulness: 'playful', wisdom: 'thoughtful', agency: 'independent' };
+const DEFAULT_GOALS = ['learn', 'connect', 'grow'];
+function listJoin(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a.at(-1); }
+function soulSentence() {
+  const S = App.soul; if (!S) return '';
+  const n = S.name, t = S.traits || {};
+  const top = Object.keys(TRAIT_WORDS).filter(k => (t[k] || 0) >= 0.5).sort((a, b) => t[b] - t[a]).slice(0, 3)
+    .map(k => (t[k] >= 0.7 ? 'very ' : '') + TRAIT_WORDS[k]);
+  const out = [];
+  if (top.length) out.push(`${n} is ${listJoin(top)}.`);
+  if (S.values?.length) out.push(`${n} values ${listJoin(S.values)}.`);
+  if (S.mood) out.push(`Right now ${n} feels ${S.mood}.`);
+  const tidy = g => g.replace(/^\s*\d+[.)]\s*/, '').replace(/[\s.]+$/, '');     // "3) Learn more." → "Learn more"
+  const goals = (S.goals || []).filter(g => !DEFAULT_GOALS.includes(g)).slice(-2).map(g => tidy(clip(g, 90))).filter(Boolean);
+  if (goals.length) { const gl = goals.join('; '); out.push(`${n}'s goals: ${gl}${gl.endsWith('…') ? '' : '.'}`); }
+  return out.join(' ');
+}
+
+function systemBlock() {
+  if (App.kind !== 'rwkv7' || !App.dev.systemPrompt || !App.soul) return App.kind === 'rwkv7' ? `${App.soul?.name || 'Resident'} is having a conversation.\n` : '';
+  const lines = [`You are ${App.soul.name}. You are talking with ${App.userName || 'a friend'}.`];
+  if (App.dev.soulInPrompt) { const ss = soulSentence(); if (ss) lines.push(ss); }
+  if (App.about.trim()) lines.push(App.about.trim().replace(/\s*\n\s*/g, ' '));
+  return 'System: ' + lines.join(' ') + '\n';
+}
+// loops speak as themselves too (identity line only for real models)
+const selfResponse = (p, n, t) => generateResponse((App.kind === 'rwkv7' && App.dev.systemPrompt ? systemBlock() : '') + p, n, t);
+
+// ── A soul that changes with living ──
+// Small, transparent nudges (these are rules we chose, not something the model reports):
+// what happens in a conversation or a loop nudges a trait by ~0.002-0.01, every trait drifts
+// back toward where it started by 0.5% per event (the middle path), clamped to 0.05-0.95.
+// Mood is read from the words in the latest exchange and drifts back to "calm" after a few quiet ones.
+const MOOD_WORDS = {
+  happy:   ['happy', 'glad', 'great', 'wonderful', 'love', 'yay', 'grateful', 'pleasure', 'excellent', 'lovely', 'delight'],
+  playful: ['haha', 'ha-ha', 'hehe', 'lol', 'joke', 'funny', 'silly', 'giggle'],
+  sad:     ['sad', 'alone', 'lonely', 'miss', 'cry', 'not well', 'worst', 'hurt'],
+  worried: ['worried', 'afraid', 'scared', 'nervous', 'problem', 'wrong', 'trouble'],
+  curious: ['wonder', 'curious', 'interesting', 'why', 'how come', 'what if'],
+  dreamy:  ['dream', 'sleep', 'night', 'moon', 'stars'],
+};
+const TRAIT_EVENTS = {
+  dream: { creativity: 0.01 }, reflection: { wisdom: 0.006 }, memory: { wisdom: 0.005, empathy: 0.003 },
+  consolidation: { wisdom: 0.006 }, goal: { agency: 0.01 }, self_prompt: { curiosity: 0.006 }, inner_voice: { wisdom: 0.003 },
+};
+function nudge(name, d) { const t = App.soul.traits; t[name] = Math.min(0.95, Math.max(0.05, (t[name] || 0.5) + d)); }
+function growSoul(kind, said, reply) {
+  const S = App.soul; if (!S) return;
+  S.baseline = S.baseline || { ...S.traits };
+  const r = (reply || '').toLowerCase(), u = (said || '').toLowerCase(), both = r + ' ' + u;
+  const has = words => words.some(w => both.includes(w));
+  if (kind === 'chat') {
+    nudge('tenacity', 0.002);                                         // stayed in the conversation
+    if (r.includes('?')) nudge('curiosity', 0.01);                     // asked something back
+    if (u.includes('?')) nudge('curiosity', 0.004);
+    if (has(['sorry', 'glad', 'thank', 'grateful', 'feel', 'hope', 'care', 'worried about'])) nudge('empathy', 0.01);
+    if (has(MOOD_WORDS.playful) || r.includes('!')) nudge('playfulness', 0.006);
+  } else for (const [t, d] of Object.entries(TRAIT_EVENTS[kind] || {})) nudge(t, d);
+  for (const k of Object.keys(S.traits)) S.traits[k] += ((S.baseline[k] ?? S.traits[k]) - S.traits[k]) * 0.005;
+  // mood: most-mentioned feeling in the exchange, else drift to calm after 3 quiet ones
+  let best = null, bestN = 0;
+  for (const [mood, words] of Object.entries(MOOD_WORDS)) {
+    const n = words.reduce((c, w) => c + (both.split(w).length - 1), 0);
+    if (n > bestN) { best = mood; bestN = n; }
+  }
+  if (best) { S.mood = best; S.quiet = 0; } else if ((S.quiet = (S.quiet || 0) + 1) >= 3) { S.mood = 'calm'; S.quiet = 0; }
+  updateTraits(); updateMood();
+}
+
+// ── Developer console ──
+const DEV_FIELDS = [
+  ['temperature', 'Temperature', 0.05, 2, 0.05, 'Higher = more surprising, lower = steadier'],
+  ['topP', 'Top-P', 0.05, 1, 0.05, 'Only the likeliest words adding up to this share of probability'],
+  ['topK', 'Top-K', 0, 500, 1, 'Only the K likeliest words (0 = off)'],
+  ['presence', 'Presence penalty', 0, 2, 0.1, 'Push down any word already said (0 = off)'],
+  ['frequency', 'Frequency penalty', 0, 2, 0.1, 'Extra push-down per repeat (0 = off)'],
+  ['decay', 'Penalty decay', 0.9, 1, 0.001, 'How fast old repeats are forgiven (1 = never)'],
+  ['maxTokens', 'Max reply tokens', 10, 300, 10, 'Longest reply, in tokens'],
+  ['contextTurns', 'Remembered exchanges', 0, 10, 1, 'How many past exchanges go into each prompt'],
+];
+function buildDevConsole() {
+  const box = document.getElementById('dev-fields'); box.innerHTML = '';
+  for (const [key, label, min, max, step, hint] of DEV_FIELDS) {
+    const row = document.createElement('label'); row.className = 'dev-row'; row.title = hint;
+    row.innerHTML = `<span>${label}<small>${hint}</small></span>`;
+    const inp = document.createElement('input'); inp.type = 'number'; inp.min = min; inp.max = max; inp.step = step;
+    inp.value = App.dev[key]; inp.dataset.key = key;
+    inp.onchange = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) App.dev[key] = Math.min(max, Math.max(min, v)); inp.value = App.dev[key]; refreshPromptView(); };
+    row.appendChild(inp); box.appendChild(row);
+  }
+  for (const [key, label] of [['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
+    const row = document.createElement('label'); row.className = 'dev-row dev-check';
+    row.innerHTML = `<span>${label}</span>`;
+    const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!App.dev[key];
+    inp.onchange = () => { App.dev[key] = inp.checked; refreshPromptView(); };
+    row.appendChild(inp); box.appendChild(row);
+  }
+}
+function refreshPromptView() {
+  const pre = document.getElementById('dev-prompt'); if (!pre) return;
+  pre.textContent = App.lastPrompt || (App.soul ? systemBlock() + `${userLabel()}: …\n${App.soul.name}:` : '(wake someone up first)');
+}
+function syncSoulFields() {
+  document.getElementById('user-name').value = App.userName || '';
+  if (App.genesisDate) document.getElementById('setting-genesis').textContent = new Date(App.genesisDate).toLocaleDateString();
+  document.getElementById('setting-conversations').textContent = App.conversationCount || 0;
+  document.getElementById('setting-tokens').textContent = App.tokensGenerated || 0;
+  document.getElementById('about-note').value = App.about || '';
+  buildDevConsole(); refreshPromptView();
+}
+
 // Real RWKV-7 voice: feed the prompt, then speak one line, with repetition control
 // (seeded with her own recent replies so she doesn't say the same thing every time).
 async function generateResponseRWKV7(prompt, maxTokens, temp) {
@@ -2502,15 +2671,16 @@ async function generateResponseRWKV7(prompt, maxTokens, temp) {
     res = App.model.forward(ids[i], state); state = res.state;
     await yieldToMain();
   }
-  const rep = makeRepTracker();
+  const D = App.dev;
+  const rep = makeRepTracker({ presence: D.presence, frequency: D.frequency, decay: D.decay });
   for (const m of App.memories.slice(-4)) if (m.response) for (const id of tok.encode(m.response)) rep.add(id);
   const gen = [];
   for (let i = 0; i < maxTokens; i++) {
     const logits = rep.apply(res.logits);
-    let next = sampleLogits(logits, temp, 0.9);
+    let next = sampleLogits(logits, temp, D.topP, D.topK);
     // no line break (or end-of-text) before she has said anything: redraw
     if (!tok.decode(gen).trim())
-      for (let k = 0; k < 8 && (next === 0 || tok.decode([next]).includes('\n')); k++) next = sampleLogits(logits, temp, 0.9);
+      for (let k = 0; k < 8 && (next === 0 || tok.decode([next]).includes('\n')); k++) next = sampleLogits(logits, temp, D.topP, D.topK);
     if (next === 0) break;                               // RWKV World token 0 = end of text
     gen.push(next); App.tokensGenerated++;
     rep.step(); rep.add(next);
@@ -2709,30 +2879,30 @@ const chats = () => App.memories.filter(m => m.type === 'conversation');
 const clip = (t, n) => (t || '').length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : (t || '');
 
 async function loopInnerVoice() {
-  return generateResponse(pick([`${pipName()} reflects quietly:`, 'A thought surfaces:', 'I notice something:', 'Thinking to myself:']), 40, 0.9);
+  return selfResponse(pick([`${pipName()} reflects quietly:`, 'A thought surfaces:', 'I notice something:', 'Thinking to myself:']), 40, 0.9);
 }
 async function loopDream() {
-  return generateResponse(pick(['Dreaming, I imagine:', 'In a dream, I see:', 'While resting, patterns form:']), 60, 1.1);
+  return selfResponse(pick(['Dreaming, I imagine:', 'In a dream, I see:', 'While resting, patterns form:']), 60, 1.1);
 }
 async function loopSelfPrompt() {
-  return generateResponse(pick(['A question I would like to explore:', 'Something I am wondering about:', 'I want to ask myself:']), 40, 0.9);
+  return selfResponse(pick(['A question I would like to explore:', 'Something I am wondering about:', 'I want to ask myself:']), 40, 0.9);
 }
 async function loopReflection() {
   const last = chats().slice(-1)[0];
   if (!last) return null;                                     // nothing to reflect on yet
-  return generateResponse(`Thinking back on when my friend said "${clip(last.user, 80)}", I realize`, 40, 0.8);
+  return selfResponse(`Thinking back on when ${App.userName || 'my friend'} said "${clip(last.user, 80)}", I realize`, 40, 0.8);
 }
 async function loopMemoryReplay() {
   const all = chats();
   if (!all.length) return null;
   const m = pick(all);
-  const out = await generateResponse(`I remember when my friend said "${clip(m.user, 80)}" and I answered "${clip(m.response, 80)}". Looking back, I feel`, 40, 0.85);
+  const out = await selfResponse(`I remember when ${App.userName || 'my friend'} said "${clip(m.user, 80)}" and I answered "${clip(m.response, 80)}". Looking back, I feel`, 40, 0.85);
   return out ? `Remembering "${clip(m.user, 40)}": ${out}` : null;
 }
 async function loopGoal() {
-  const g = await generateResponse('Something I want to learn or do next:', 30, 0.9);
+  const g = await selfResponse('Something I want to learn or do next:', 30, 0.9);
   if (g && App.soul) {
-    App.soul.goals = [...(App.soul.goals || []), clip(g, 60)].slice(-8);   // her goals actually change
+    App.soul.goals = [...(App.soul.goals || []), clip(g, 120)].slice(-8);   // her goals actually change
   }
   return g;
 }
@@ -2741,7 +2911,7 @@ async function loopConsolidate() {
   App.lastConsolidated = Date.now();
   if (!recent.length) return null;
   const text = recent.map(m => `${m.user} / ${m.response}`).join(' ');
-  return generateResponse(`Summarizing what we talked about: ${clip(text, 200)} In brief:`, 50, 0.7);
+  return selfResponse(`Summarizing what we talked about: ${clip(text, 200)} In brief:`, 50, 0.7);
 }
 
 const LOOP_LABELS = { inner_voice: '💭', dream: '🌙', self_prompt: '❓', reflection: '🪞', memory: '📷', goal: '🎯', consolidation: '🗂' };
@@ -2842,6 +3012,7 @@ async function runDueLoop() {
     const out = ((await loop.run()) || '').trim();
     if (out) {
       const shared = loop.share();
+      growSoul(loop.type, '', out);
       App.memories.push({ type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
       addInnerLifeEntry(loop.type, shared ? out : `(${pipName()} kept this one private)`, shared ? {} : { private: true });
       noteNewInnerLife();
@@ -2905,6 +3076,9 @@ async function exportSoul() {
     conversationCount: App.conversationCount,
     tokensGenerated: App.tokensGenerated,
     genesisDate: App.genesisDate,
+    userName: App.userName,
+    about: App.about,
+    dev: App.dev,
     exportedAt: Date.now()
   };
   
@@ -2946,6 +3120,10 @@ async function importSoul(file) {
       if (data.conversationCount) App.conversationCount = data.conversationCount;
       if (data.tokensGenerated) App.tokensGenerated = data.tokensGenerated;
       if (data.genesisDate) App.genesisDate = new Date(data.genesisDate);
+      if (typeof data.userName === 'string') App.userName = data.userName;
+      if (typeof data.about === 'string') App.about = data.about;
+      if (data.dev) App.dev = { ...DEV_DEFAULTS, ...data.dev };
+      syncSoulFields();
       
       updateTraits();
       updateMood();
@@ -3053,6 +3231,14 @@ document.getElementById('clear-all-btn').addEventListener('click', () => {
 });
 
 document.getElementById('export-btn').addEventListener('click', exportSoul);
+document.getElementById('user-name').addEventListener('change', e => { App.userName = e.target.value.trim(); refreshPromptView(); });
+document.getElementById('about-note').addEventListener('change', e => { App.about = e.target.value; refreshPromptView(); });
+document.getElementById('dev-toggle').addEventListener('click', () => {
+  const b = document.getElementById('dev-body'); b.hidden = !b.hidden;
+  document.getElementById('dev-caret').textContent = b.hidden ? '▸' : '▾';
+  if (!b.hidden) { buildDevConsole(); refreshPromptView(); }
+});
+document.getElementById('dev-reset').addEventListener('click', () => { App.dev = { ...DEV_DEFAULTS }; buildDevConsole(); refreshPromptView(); });
 document.getElementById('pip-name').addEventListener('change', (e) => {
   const name = e.target.value.trim();
   if (!App.soul || !name || name === App.soul.name) return;
@@ -3071,6 +3257,7 @@ document.getElementById('import-file-input').addEventListener('change', (e) => {
 });
 
 updateLoopIndicators();
+syncSoulFields();
 </script>
 </body>
 </html>

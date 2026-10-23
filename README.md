@@ -127,6 +127,14 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.6 — 2026-10-22 · Kehai Interim + Kham — a system prompt, a soul that lives, a developer console
+
+- **System prompt** (real RWKV-7 models): *"System: You are [name]. You are talking with [your name, or "a friend"]."* plus who they are right now, from the soul: their strongest traits, values, current mood and latest goals, plus an optional **About them** note you write in settings. The autonomous loops start from the same identity line, so their thoughts and dreams are theirs too. A base model treats all this as scene-setting, not rules. **Your name** (settings) also labels your lines in the conversation.
+- **The soul changes with living.** Until now traits and mood were display only and never moved. Now small, transparent nudges (rules we chose, not something the model reports): asking back raises curiosity, kind words raise empathy, laughter raises playfulness, staying in the conversation raises tenacity; dreams → creativity, reflection / memory / summaries → wisdom, new goals → agency. Each step is ~0.002–0.01, every trait drifts 0.5% back toward where it started (the middle path), clamped to 0.05–0.95. Mood is read from the words of each exchange (happy, playful, curious, sad, worried, dreamy) and settles back to calm after three quiet ones.
+- **Developer console** at the bottom of Settings (tap to open): temperature, top-P, top-K (new in the sampler), presence / frequency penalty and decay, max reply tokens, remembered exchanges, system prompt on/off, soul-in-prompt on/off, and **the exact last prompt the model saw**. All of it, plus your name and the About note, is saved in the soul export.
+- Importing a soul now also refreshes Genesis date, Conversations and Tokens in settings.
+- **Test:** `tests/real/pips-room-soul-e2e.js` (needs Playwright) with the real 0.1B and a real exported soul: sets name / About / temperature 0.7 / top-K 40 through the page's own inputs, chats twice, runs two loops, prints the prompt and the trait changes (curiosity 0.7167 → 0.7246, empathy 0.6010 → 0.6207, agency 0.5941 → 0.6040, …), then exports with the real button and re-imports in a fresh page: everything came back, no page errors. Her first reply with a soul: *"Oh, I'm so happy to be back at home with my family and friends. I really love you!"*
+
 ### v1.5.3 — 2026-10-22 · Kehai Interim + Kham — the Journal
 
 - **Settings now has a Journal tab:** everything the autonomous loops have produced, newest first, with date and time, sorted into categories with counts: 💭 Thoughts, 🌙 Dreams, ❓ Wonderings, 🪞 Reflections, 📷 Memories, 🎯 Goals (with her current goal list on top), 🗂 Summaries, or 📖 All. It updates live while open. Private entries stay folded (*"Kept private. Tap to read."*); they're in the soul export either way, since the journal is just her memories.
