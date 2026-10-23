@@ -127,6 +127,13 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.7 — 2026-10-22 · Kehai Interim + Kham — prompts and developer consoles across the Pip Suite
+
+- **Developer console in Multi-Pip Chat and Junto** (⚙ Dev), matching Pip's Room's: temperature, top-P, **top-K** (new in both samplers), presence / frequency penalty and **decay**, max tokens, context length, system prompt on/off, *Your name*, and the **exact last prompt** each model saw (and which one saw it). Multi-Pip's quick Temperature / Anti-repeat boxes stay in step with the console.
+- **Multi-Pip Chat prompts:** each real model gets *"System: You are Gander. You are in a chat room with Goose and Kham."* plus its own note (✎ in the Pip list). **Tap a Pip's name to rename it**, so nobody has to be called `rwkv7-g1d-0.1b-20260129-ctx8192 #2` (history follows the rename).
+- **Junto roles:** each node has a **Role** box (its system prompt). A node with a role, or every node with *Chat format* on, gets *"System: You are Frogbert. <role>\nUser: …\nFrogbert:"* and answers in one line; without one, prompts are continued raw as before. **Tap the node's name to rename it.** First step toward a swarm of specialists (the grammar-coach idea).
+- **Test:** `tests/real/suite-prompts-e2e.js` (needs Playwright), real 0.1B. Multi-Pip: renamed Goose and Gander, a ✎ note, your name and top-K 40 through the console, a 4-turn chat, prompt checked. Junto: renamed to Frogbert; raw *"Frogs are"* continued as prose; with the role *"You are the frog expert…"*, asked *"What do frogs eat?"*: *"…They eat insects and other small creatures."* No page errors. (It caught a bug before it shipped: the new ✎ button first borrowed the remove button's class and would have removed the Pip.) Engine copies still MATCH (6.66e-15).
+
 ### v1.6 — 2026-10-22 · Kehai Interim + Kham — a system prompt, a soul that lives, a developer console
 
 - **System prompt** (real RWKV-7 models): *"System: You are [name]. You are talking with [your name, or "a friend"]."* plus who they are right now, from the soul: their strongest traits, values, current mood and latest goals, plus an optional **About them** note you write in settings. The autonomous loops start from the same identity line, so their thoughts and dreams are theirs too. A base model treats all this as scene-setting, not rules. **Your name** (settings) also labels your lines in the conversation.

@@ -618,6 +618,22 @@ header h1 span {
 }
 
 #file-input { display: none; }
+
+/* developer console (shared look across the Pip Suite) */
+.dev-panel { border-top: 1px solid var(--border); padding: 10px 16px 14px; font-size: 12px; }
+.dev-panel[hidden] { display: none; }
+.dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px 14px; }
+.dev-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--text-muted, #9aa); }
+.dev-row small { display: block; font-size: 10px; opacity: 0.7; }
+.dev-row input[type=number], .dev-row input[type=text] { width: 76px; background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-radius: 5px; color: inherit; font-family: monospace; font-size: 12px; padding: 4px 6px; }
+.dev-row input[type=text] { width: 110px; font-family: inherit; }
+.dev-row input[type=checkbox] { width: 16px; height: 16px; }
+.dev-prompt-label { margin: 10px 0 4px; color: var(--text-muted, #9aa); }
+.dev-prompt { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0;
+  font-size: 11px; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; }
+.dev-toggle-btn { cursor: pointer; }
+
 </style>
 </head>
 <body>
@@ -703,6 +719,11 @@ header h1 span {
           </div>
 
           <div class="detail-section">
+            <div class="detail-section-title">Role <span style="opacity:.6;font-weight:400;text-transform:none">(this node's system prompt; real RWKV-7 only)</span></div>
+            <textarea id="node-role" rows="2" placeholder="e.g. You are the syntax coach: you know JavaScript's rules and nothing else." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:inherit;font:inherit;font-size:13px;padding:8px;resize:vertical"></textarea>
+          </div>
+
+          <div class="detail-section">
             <div class="detail-section-title">Soul Information</div>
             <div class="detail-grid">
               <div class="detail-item">
@@ -745,7 +766,16 @@ header h1 span {
                 <label>Frequency</label>
                 <input type="number" id="inf-frequency" value="0.4" min="0" max="2" step="0.1">
               </div>
+              <div class="inference-control">
+                <label>&nbsp;</label>
+                <button class="btn dev-toggle-btn" id="dev-btn" title="Developer console">⚙ Dev</button>
+              </div>
             </div>
+          </div>
+          <div class="dev-panel" id="dev-panel" hidden>
+            <div class="dev-grid" id="dev-fields"></div>
+            <div class="dev-prompt-label">Last prompt sent <span id="dev-prompt-who"></span></div>
+            <pre class="dev-prompt" id="dev-prompt">(nothing yet)</pre>
           </div>
           <div id="inference-input-area">
             <textarea id="inference-input" placeholder="Enter prompt for inference..." rows="1"></textarea>
@@ -1644,7 +1674,7 @@ function makeRepTracker(opts) {
   };
 }
 
-function sampleLogits(logits, temp, topP) {
+function sampleLogits(logits, temp, topP, topK = 0) {
   if (temp <= 0.01) {
     let max = -Infinity, best = 0;
     for(let i=0; i<logits.length; i++) { if(logits[i]>max){ max=logits[i]; best=i; } }
@@ -1664,6 +1694,13 @@ function sampleLogits(logits, temp, topP) {
     sum += probs[i];
   }
   for(let i=0; i<logits.length; i++) probs[i] /= sum;
+
+  if (topK > 0 && topK < probs.length) {            // keep only the K likeliest tokens
+    const kth = Float32Array.from(probs).sort()[probs.length - topK];
+    let s2 = 0;
+    for (let i = 0; i < probs.length; i++) { if (probs[i] < kth) probs[i] = 0; s2 += probs[i]; }
+    for (let i = 0; i < probs.length; i++) probs[i] /= (s2 || 1);
+  }
 
   if (topP < 1.0) {
     const sorted = Array.from(probs).map((p, i) => ({p, i})).sort((a,b) => b.p - a.p);
@@ -1864,6 +1901,7 @@ const Swarm = {
     document.getElementById('detail-layers').textContent = node.cfg.layers;
     document.getElementById('detail-status').textContent = 'Online';
     
+    document.getElementById('node-role').value = node.role || '';
     if (node.soul) {
       document.getElementById('detail-soul-name').textContent = node.soul.name || '-';
       document.getElementById('detail-soul-genesis').textContent = node.soul.genesisDate ? new Date(node.soul.genesisDate).toLocaleDateString() : '-';
@@ -1968,15 +2006,54 @@ async function loadModelFile(file) {
   });
 }
 
+
+// ── Developer console (shared with Pip's Room): every knob for the voice, and the exact last prompt ──
+function buildDevPanel(boxId, DEV, fields, onChange) {
+  const box = document.getElementById(boxId); box.innerHTML = '';
+  for (const f of fields) {
+    const [key, label, a, b, step, hint] = f;
+    const row = document.createElement('label'); row.className = 'dev-row'; row.title = hint || '';
+    row.innerHTML = `<span>${label}${hint ? `<small>${hint}</small>` : ''}</span>`;
+    const inp = document.createElement('input');
+    if (a === 'text') { inp.type = 'text'; inp.value = DEV[key] || ''; inp.placeholder = b || '';
+      inp.onchange = () => { DEV[key] = inp.value.trim(); onChange && onChange(key); }; }
+    else if (a === 'bool') { inp.type = 'checkbox'; inp.checked = !!DEV[key];
+      inp.onchange = () => { DEV[key] = inp.checked; onChange && onChange(key); }; }
+    else { inp.type = 'number'; inp.min = a; inp.max = b; inp.step = step; inp.value = DEV[key];
+      inp.onchange = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) DEV[key] = Math.min(b, Math.max(a, v)); inp.value = DEV[key]; onChange && onChange(key); }; }
+    inp.dataset.key = key; row.appendChild(inp); box.appendChild(row);
+  }
+}
+
+// Knobs not already in the inference bar. A node with a Role (or "Chat format" on) gets
+// "System: You are <name>. <role>\nUser: <prompt>\n<name>:" and answers in one line;
+// otherwise the prompt is continued raw, as before.
+const DEV = { topK: 0, decay: 0.996, chatFormat: false, userName: '', lastPrompt: '', lastWho: '' };
+const DEV_FIELDS = [
+  ['topK', 'Top-K', 0, 500, 1, '0 = off'], ['decay', 'Penalty decay', 0.9, 1, 0.001, 'repeats forgiven'],
+  ['chatFormat', 'Chat format for all', 'bool'], ['userName', 'Your name', 'text', 'User'],
+];
+function refreshDevPrompt() {
+  const pre = document.getElementById('dev-prompt'); if (!pre) return;
+  pre.textContent = DEV.lastPrompt || '(nothing yet)';
+  document.getElementById('dev-prompt-who').textContent = DEV.lastWho ? `(to ${DEV.lastWho})` : '';
+}
+
 async function runInference(node, prompt, temp, topP, maxTokens) {
   if (!node || !node.model || !node.tokenizer) {
     Swarm.log('No model available for inference', 'error');
     return '';
   }
   
+  const real = node.kind === 'rwkv7';
+  const chat = real && (DEV.chatFormat || (node.role || '').trim());
+  if (chat) {
+    const you = DEV.userName || 'User';
+    prompt = `System: You are ${node.name}.${node.role ? ' ' + node.role.trim().replace(/\s*\n\s*/g, ' ') : ''}\n${you}: ${prompt}\n${node.name}:`;
+  }
+  DEV.lastPrompt = prompt; DEV.lastWho = node.name; refreshDevPrompt();
   const ids = node.tokenizer.encode(prompt);
   if (!ids.length) return '';
-  const real = node.kind === 'rwkv7';
   // Feed EVERY prompt token (the old loop skipped the last one and fed the first twice), then sample.
   let state = node.model.getEmptyState(), res = null;
   for (let i = 0; i < ids.length; i++) {
@@ -1986,16 +2063,21 @@ async function runInference(node, prompt, temp, topP, maxTokens) {
   const gen = [];
   const num = (id, d) => { const v = parseFloat((document.getElementById(id) || {}).value); return Number.isFinite(v) ? v : d; };
   const rep = real ? makeRepTracker({ presence: num('inf-presence', REP_DEFAULTS.presence),
-                                      frequency: num('inf-frequency', REP_DEFAULTS.frequency) }) : null;
+                                      frequency: num('inf-frequency', REP_DEFAULTS.frequency), decay: DEV.decay }) : null;
   for (let i = 0; i < maxTokens; i++) {
-    const next = sampleLogits(rep ? rep.apply(res.logits) : res.logits, temp, topP);
+    const logits = rep ? rep.apply(res.logits) : res.logits;
+    let next = sampleLogits(logits, temp, topP, real ? DEV.topK : 0);
+    if (chat && !node.tokenizer.decode(gen).trim())   // chat answers: no empty line before anything is said
+      for (let k = 0; k < 8 && (next === 0 || node.tokenizer.decode([next]).includes('\n')); k++) next = sampleLogits(logits, temp, topP, DEV.topK);
     if (real && next === 0) break;               // RWKV World token 0 = end of text
     gen.push(next);
     if (rep) { rep.step(); rep.add(next); }
+    if (chat && node.tokenizer.decode(gen).includes('\n')) break;   // one line per answer
     res = node.model.forward(next, state); state = res.state;
     if (real || i % 5 === 0) await yieldToMain();
   }
-  return node.tokenizer.decode(gen);
+  const out = node.tokenizer.decode(gen);
+  return chat ? out.split('\n')[0].trim() : out;
 }
 
 function showToast(message, type = 'info') {
@@ -2130,6 +2212,22 @@ document.getElementById('console-clear').addEventListener('click', () => {
 });
 
 Swarm.init();
+document.getElementById('node-detail-name').title = 'Tap to rename';
+document.getElementById('node-detail-name').style.cursor = 'text';
+document.getElementById('node-detail-name').addEventListener('click', () => {
+  const node = Swarm.selectedNode; if (!node) return;
+  const v = (window.prompt('Rename this node:', node.name) || '').trim();
+  if (v && v !== node.name) { Swarm.log(`${node.name} is now ${v}`, 'info'); node.name = v; Swarm.renderNodeList(); Swarm.renderNodeDetail(); }
+});
+document.getElementById('node-role').addEventListener('change', e => {
+  if (!Swarm.selectedNode) return;
+  Swarm.selectedNode.role = e.target.value.trim();
+  Swarm.log(`${Swarm.selectedNode.name}'s role ${Swarm.selectedNode.role ? 'set' : 'cleared'}`, 'info');
+});
+document.getElementById('dev-btn').addEventListener('click', () => {
+  const p = document.getElementById('dev-panel'); p.hidden = !p.hidden;
+  if (!p.hidden) { buildDevPanel('dev-fields', DEV, DEV_FIELDS); refreshDevPrompt(); }
+});
 </script>
 </body>
 </html>
