@@ -127,6 +127,13 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.9 — 2026-10-22 · Kehai Interim + Kham — think before answering (Pip's Room, experimental)
+
+- RWKV7-G1 is, per its model card, a "pure RNN reasoning model": given `User: … (think)` and `Assistant: <think` it reasons before answering. **Think before answering** (developer console, off by default, needs living memory) does that for a turn: the resident thinks inside `<think>…</think>` (line breaks allowed, up to the **Thinking budget**, default 240 tokens), then answers. The thinking stays in their living state and goes to the journal as 🤔 *Thinking* (private unless Share Inner Voice is on). If the budget runs out mid-thought, the thought is closed for them so they can still answer.
+- **Thinking turns use the model's own format** (`User:` / blank line / `Assistant:`): probed side by side on the real 0.1B, the card format reasoned *"3 + 2 = 5. So answer 5."* while our name labels drifted to "3". Who they are is still carried by the System lines. Answers can run several lines (a turn ends at a blank line), and chat bubbles now keep line breaks.
+- **Steadier sampling while thinking:** top-P ≤ 0.5, temperature ≤ 0.8 and only a light, unseeded repetition penalty (careful reasoning repeats words on purpose), close to the card's settings. Ordinary turns are unchanged.
+- **Test:** `tests/real/pips-room-think-e2e.js` (needs Playwright). Real 0.1B, a resident named Wren: *"There are 3 frogs on a log and 2 more hop on…"* → thinking *"Total = 3 + 2 = 5 frogs. Thus answer: 5."*, then second-guessed past a 160-token budget and answered "6" (hence the 240 default; a 0.1B's final answer still wobbles). *"Why do frogs sing at night?"* → thinking *"frogs are nocturnal, they sing at night because they are active during the night"*, answered the same. Both thoughts in the journal; no page errors.
+
 ### v1.8 — 2026-10-22 · Kehai Interim + Kham — living memory and threads (Pip's Room)
 
 RWKV is recurrent: everything it has read lives in a fixed-size state (≈2.4 MB for the 0.1B), so there's no length limit, but older things blur into gist rather than being recalled word for word. Until now Pip's Room ignored that and re-read the last few exchanges from a blank state every turn.
