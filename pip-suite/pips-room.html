@@ -2571,6 +2571,7 @@ async function handleUserMessage() {
   input.disabled = false;
   document.getElementById('send-btn').disabled = false;
   input.focus();
+  App.lastTurnAt = Date.now();
   App.isGenerating = false;
   
   if (App.privacy.reflections && App.loopStates.reflection) {
@@ -2784,17 +2785,31 @@ async function ensureLive() {
 // Reasoning wants steadier sampling than chat (careful thinking repeats words on purpose), so
 // thinking turns use top-P ≤ 0.5, temperature ≤ 0.8 and only a light penalty, close to the model
 // card's settings. These caps apply to thinking turns only.
+// A thinking turn can run several lines, so a small model may drift into writing the next line of the
+// transcript itself: "User: …", or one of their own loop lines ("Wren (dreaming): …"). That isn't
+// theirs to say in this turn, so a new speaker line ends the turn and is taken back out of the state.
+// (The engine never changes a state in place, so keeping the one from the last line break is enough.)
+function speakerLine() {
+  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const names = ['User', 'Assistant', 'System', App.soul?.name || 'Resident', userLabel()].filter(Boolean).map(esc).join('|');
+  return new RegExp(`(?:^|\\n)[ \\t]*(?:${names})(?:\\s*\\([^)\\n]{0,30}\\))?\\s*:`);
+}
+const liveMark = len => ({ state: App.live.state, lastLogits: App.live.lastLogits, tokens: App.live.tokens, len });
+function rollBack(mark) { App.live.state = mark.state; App.live.lastLogits = mark.lastLogits; App.live.tokens = mark.tokens; }
 const thinkSampling = (D, temp) => ({ temp: Math.min(temp, 0.8), topP: Math.min(D.topP, 0.5) });
 async function thinkPhase(rep, temp) {
-  const tok = App.tokenizer, D = App.dev, gen = [], TS = thinkSampling(D, temp);
-  let logits = App.live.lastLogits;
+  const tok = App.tokenizer, D = App.dev, TS = thinkSampling(D, temp), speaker = speakerLine();
+  let gen = [], logits = App.live.lastLogits, mark = liveMark(0);
   for (let i = 0; i < D.thinkTokens; i++) {
     const next = sampleLogits(rep.apply(logits), TS.temp, TS.topP, D.topK);
     if (next === 0) break;
     gen.push(next); App.tokensGenerated++; rep.step(); rep.add(next);
     const r = App.model.forward(next, App.live.state);
     App.live.state = r.state; App.live.lastLogits = r.logits; App.live.tokens++; logits = r.logits;
-    if (tok.decode(gen).includes('</think>')) break;
+    const so = tok.decode(gen);
+    if (so.includes('</think>')) break;
+    if (speaker.test(so)) { rollBack(mark); gen = gen.slice(0, mark.len); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }   // drifted into the transcript
+    if (so.endsWith('\n')) mark = liveMark(gen.length);
     if (i % 4 === 0) setSoulConsole(`Thinking... ${i + 1}`);
     await yieldToMain();
   }
@@ -2819,7 +2834,8 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
   if (opts.think) { const TS = thinkSampling(D, temp); temp = TS.temp; opts.topP = TS.topP; }
   if (opts.think) { await feedLive(' <think'); thought = await thinkPhase(rep, temp); }
   if (!opts.think) for (const m of App.memories.slice(-4)) if (m.response) for (const id of tok.encode(m.response)) rep.add(id);
-  const gen = []; let logits = App.live.lastLogits, ended = false;
+  let gen = [], logits = App.live.lastLogits, ended = false, mark = liveMark(0);
+  const speaker = endOn === '\n' ? null : speakerLine();     // one-line turns end at the line break anyway
   for (let i = 0; i < maxTokens; i++) {
     const L = rep.apply(logits);
     let next = sampleLogits(L, temp, opts.topP ?? D.topP, D.topK);
@@ -2830,10 +2846,13 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
     rep.step(); rep.add(next);
     const r = App.model.forward(next, App.live.state);       // what they say becomes part of them
     App.live.state = r.state; App.live.lastLogits = r.logits; App.live.tokens++; logits = r.logits;
-    if (tok.decode(gen).trimStart().includes(endOn)) { ended = true; break; }
+    const so = tok.decode(gen).trimStart();
+    if (so.includes(endOn)) { ended = true; break; }
+    if (speaker && speaker.test(so)) { rollBack(mark); gen = gen.slice(0, mark.len); App.speakerCuts = (App.speakerCuts || 0) + 1; break; }
+    if (speaker && so.endsWith('\n')) mark = liveMark(gen.length);
     await yieldToMain();
   }
-  if (!ended) await feedLive(endOn);
+  if (!ended) await feedLive(tok.decode(gen).endsWith('\n') ? endOn.slice(1) || '\n' : endOn);
   updateLiveInfo();
   return { text: tok.decode(gen).trimStart().split(endOn)[0].trim(), fed: updates + text + (opts.think ? ' <think' : ''), thought };
 }
@@ -3273,8 +3292,13 @@ function startAutonomousLoops() {
   Object.keys(LOOPS).forEach((k, i) => { App.loopLast[k] = now - LOOPS[k].every + 60e3 + i * 45e3; });
   App.loopTimer = setInterval(runDueLoop, 15000);
 }
+// Loops wait their turn: never while a reply (or its thinking) is being written, not for a minute
+// after one, and not while you're typing, so a thought doesn't land in the middle of a conversation.
+const LOOP_QUIET_MS = 60e3;
 async function runDueLoop() {
   if (!App.isAwake || !App.model || App.isGenerating || App.loopBusy) return;
+  if (Date.now() - (App.lastTurnAt || 0) < LOOP_QUIET_MS) return;
+  if (document.getElementById('message-input')?.value.trim()) return;
   const now = Date.now();
   const due = Object.keys(LOOPS)
     .filter(k => App.loopStates[k] && now - (App.loopLast[k] || 0) >= LOOPS[k].every)
