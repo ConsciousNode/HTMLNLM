@@ -127,6 +127,13 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.10 — 2026-10-22 · Kehai Interim + Kham — loops wait their turn (Pip's Room)
+
+- Kham noticed loop thoughts turning up inside thinking turns and their answers. **Loops now wait their turn:** they still never run while a reply (or its thinking) is being written, and now they also wait a quiet minute after each reply and don't fire while there's text in the message box, so a thought doesn't land in the middle of a conversation.
+- **A thinking turn can't speak for anyone else.** Thinking answers can run several lines, so a small model can drift into writing the next line of the transcript itself (`User: …`, or one of their own loop lines like `Wren (dreaming): …`). A new speaker line now ends the turn, and it's taken back out of the living state: the state from the last line break is restored (the engine never changes a state in place, so this costs nothing). Same for the thinking itself.
+- What this doesn't change: loops are part of who they are, so what they just thought can still color the next reply. That's the living memory working, not a leak.
+- **Test** (`tests/real/pips-room-think-e2e.js`, real 0.1B, two runs): a loop right after a reply didn't run, a loop while typing didn't run, once quiet it ran (*"There are 5 frogs on the floor… Do you think we can find all 5 frogs by just counting those?"*), a loop during a reply didn't run. No speaker lines in any answer or thought (the cut didn't need to fire in these runs; the pattern was checked separately on drift examples). Both runs reasoned 3 + 2 = 5 and answered 5. In one run the second thinking turn re-solved the frog sum instead of the new question; the other answered "why do frogs sing at night" properly, so a 0.1B still loses the thread sometimes. No page errors.
+
 ### v1.9 — 2026-10-22 · Kehai Interim + Kham — think before answering (Pip's Room, experimental)
 
 - RWKV7-G1 is, per its model card, a "pure RNN reasoning model": given `User: … (think)` and `Assistant: <think` it reasons before answering. **Think before answering** (developer console, off by default, needs living memory) does that for a turn: the resident thinks inside `<think>…</think>` (line breaks allowed, up to the **Thinking budget**, default 240 tokens), then answers. The thinking stays in their living state and goes to the journal as 🤔 *Thinking* (private unless Share Inner Voice is on). If the budget runs out mid-thought, the thought is closed for them so they can still answer.
