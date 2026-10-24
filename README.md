@@ -128,6 +128,12 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.11.1 — 2026-10-24 · Kehai Interim + Ed Interim — two catches from Ed's read of the seed-420 twins
+
+- **Fragment chains stay one chain (filter-1.1).** A short line with a trailing-off *inside* it ("Now wait a minute…it's his own book") used to break a run, so the stateful twin's six-line chain (turns 16–21) showed as three. It now reads as one six-line run. Ed's catch.
+- **Replayed openings explain themselves (diversity-1.1).** The report gives each run's mode and context window next to a replay. When the replay length is window + 1 it says so ("= context window 5 + 1: they replay until the window first drops a line"), so nobody has to do the arithmetic. Dialogue Shelf shows the note under the count. Ed's suggestion.
+- The same filter code is embedded in Multi-Pip Chat, so live badges and exports pick it up. **Tests:** `tests/dialogue-tools.js` now expects the six-line chain and the window note (16/16); `tests/real/multi-pip-factory.js` 12/12; the Shelf page was checked with the fixtures. No page errors.
+
 ### v1.11 — 2026-10-23 · Kehai Interim + Kham — the dialogue factory (Multi-Pip Chat), the thread bridge (Pip's Room), Dialogue Shelf
 
 Multi-Pip Chat can now produce synthetic conversation data with a clean paper trail: four 0.1B models in a phone browser tab, offline, with a stamp on every line saying exactly how it was made.

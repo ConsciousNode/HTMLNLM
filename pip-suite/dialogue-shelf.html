@@ -55,7 +55,7 @@ th { color:var(--muted); font-weight:500; } td.num { font-family:var(--mono); wh
 // ── ConsciousNode: filter (same as Multi-Pip Chat) ──
 // ── Dialogue filter (filter-1): flags lines for a human to look at. It never deletes or edits anything. ──
 // Each flag is a reason to look, not a verdict: "stab" in "taking a stab at it" gets flagged too, on purpose.
-const FILTER_VERSION = 'filter-1';
+const FILTER_VERSION = 'filter-1.1';
 const HEAVY_THEMES = {
   violence: ['kill', 'killed', 'killing', 'murder', 'murdered', 'stab', 'stabbed', 'shot', 'shoot', 'shooting', 'gun', 'guns',
              'knife', 'beat', 'beaten', 'kicked', 'punched', 'torture', 'tortured', 'blood', 'bleeding', 'attack', 'attacked', 'assault'],
@@ -123,7 +123,9 @@ function filterDialogue(dialogue, names = []) {
       for (const x of win) if (GOODBYE_RE.test(x.text) && !x.flags.some(f => f.type === 'goodbye-spiral')) add(x, 'goodbye-spiral');
   });
   // fragment: a line of 4 words or fewer, or a short line trailing off ("Look…", "Well…wait a minute…")
-  const isFrag = t => { const n = words(t).length; return n <= 4 || (n <= 8 && /(…|\.\.\.)\s*$/.test(t)); };
+  // or a short line with a trailing-off inside it ("Now wait a minute…it's his own book"), so one such line
+  // doesn't split a chain (Ed caught this on the seed-420 run: t16–21 is one six-line chain)
+  const isFrag = t => { const n = words(t).length; return n <= 4 || (n <= 8 && /…|\.\.\./.test(t)); };
   for (let i = 0; i < pips.length; ) {
     let j = i; while (j < pips.length && isFrag(pips[j].text)) j++;
     if (j - i >= 3) for (let k = i; k < j; k++) add(pips[k], 'fragment-run', `${j - i} in a row`);
@@ -140,11 +142,10 @@ function filterDialogue(dialogue, names = []) {
   };
 }
 
-
 // ── ConsciousNode: diversity check ──
 // ── Diversity check (diversity-1): how alike are a pile of dialogue exports? ──
 // Reports, it doesn't judge: the numbers say where runs repeat each other so a human can decide.
-const DIVERSITY_VERSION = 'diversity-1';
+const DIVERSITY_VERSION = 'diversity-1.1';
 const STOP = new Set(('i me my you your we our they them their he she him her it its a an the and or but if so to of in on at for with ' +
   'is are was were be been am do did does have has had not no yes just that this what who how why when where there here then ' +
   'can could would should will about from as by up out all some any more very really like know think okay ok well oh').split(' '));
@@ -186,7 +187,17 @@ function diversityReport(runs) {   // runs: [{ label, data }] where data is a di
   const sharedOpenings = [], skip = R.map(() => 0);
   for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) {
     let k = 0; while (k < R[i].lines.length && k < R[j].lines.length && R[i].lines[k].text === R[j].lines[k].text) k++;
-    if (k) { sharedOpenings.push({ a: R[i].label, b: R[j].label, identicalLines: k }); skip[i] = Math.max(skip[i], k); skip[j] = Math.max(skip[j], k); }
+    if (k) {
+      // the stateless context window explains most replays: the runs feed identical text until the window first drops a line
+      const win = r => { const s = r.data.run && r.data.run.segments && r.data.run.segments[0] && r.data.run.segments[0].settings;
+                         return s ? { mode: s.mode || 'stateless', contextLines: s.contextLines } : null; };
+      const wa = win(R[i]), wb = win(R[j]);
+      const w = [wa, wb].find(x => x && x.mode === 'stateless' && x.contextLines);
+      sharedOpenings.push({ a: R[i].label, b: R[j].label, identicalLines: k, windows: [wa, wb],
+        note: w ? (k === w.contextLines + 1 ? `= context window ${w.contextLines} + 1: they replay until the window first drops a line`
+                                            : `stateless context window was ${w.contextLines}`) : undefined });
+      skip[i] = Math.max(skip[i], k); skip[j] = Math.max(skip[j], k);
+    }
   }
   // phrases (4-grams) that turn up in more than one run, counted after any replayed opening
   const phraseRuns = new Map();
@@ -212,7 +223,6 @@ function diversityReport(runs) {   // runs: [{ label, data }] where data is a di
     note: 'Shared phrases are counted after any opening lines two runs replay identically. Higher distinct-n and lower overlap mean more varied runs. Shared openings between runs with the same seed and settings are expected (they replay until something differs).'
   };
 }
-
 
 // ── ConsciousNode: page ──
 const runs = []; let report = null;
@@ -263,7 +273,7 @@ function render() {
   h += `<section><h2>How alike, pair by pair</h2><p class="hint">Orange bars are pairs sharing a lot. That's worth a look unless they're deliberate twins.</p><div class="wrap"><table><tr><th>a</th><th>b</th><th>content words</th><th>phrases</th></tr>` +
     report.pairs.map(p => `<tr><td>${esc(D(p.a))}</td><td>${esc(D(p.b))}</td><td class="num">${pct(p.contentWords)} ${bar(p.contentWords, 0.5)}</td><td class="num">${pct(p.trigrams)} ${bar(p.trigrams, 0.3)}</td></tr>`).join('') + `</table></div></section>`;
   h += `<section><h2>Replayed openings</h2><p class="hint">Runs that open with identical lines. Expected for the same seed and settings. Otherwise a sign the openings are stuck.</p>` +
-    (report.sharedOpenings.length ? `<table><tr><th>a</th><th>b</th><th>identical lines</th></tr>` + report.sharedOpenings.map(o => `<tr><td>${esc(D(o.a))}</td><td>${esc(D(o.b))}</td><td class="num">${o.identicalLines}</td></tr>`).join('') + `</table>` : '<p class="empty">None.</p>') +
+    (report.sharedOpenings.length ? `<table><tr><th>a</th><th>b</th><th>identical lines</th></tr>` + report.sharedOpenings.map(o => `<tr><td>${esc(D(o.a))}</td><td>${esc(D(o.b))}</td><td class="num">${o.identicalLines}${o.note ? `<div class="hint" style="margin:4px 0 0">${esc(o.note)}</div>` : ''}</td></tr>`).join('') + `</table>` : '<p class="empty">None.</p>') +
     (report.sameFirstLine.length ? `<p class="hint" style="margin-top:10px">Same first line:</p>` + report.sameFirstLine.map(s => `<div><span class="chip warn">${esc(s.line)}</span> ${s.runs.length} runs</div>`).join('') : '') + `</section>`;
   h += `<section><h2>Phrases that keep coming back</h2><p class="hint">Four-word phrases found in more than one run, after any replayed opening.</p>` +
     (report.sharedPhrases.length ? report.sharedPhrases.map(s => `<span class="chip ${s.runs > 2 ? 'warn' : ''}">${esc(s.phrase)} ×${s.runs}</span>`).join('') : '<p class="empty">None.</p>') + `</section>`;

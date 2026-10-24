@@ -42,7 +42,7 @@ const FAKE = `(() => {
   ok(k >= 5, `stateful and stateless match while the chat fits the 5-line window (${k} identical lines)`);
   ok(s1.run.segments[0].settings.mode === 'stateful' && s3.run.segments[0].settings.mode === 'stateless', 'mode recorded per run');
   ok(s1.dialogue.every(d => d.gen && ['newline', 'eos', 'cap'].includes(d.gen.endedBy)), 'every line records how it ended');
-  ok(s1.filter.version === 'filter-1' && Array.isArray(s1.dialogue[0].flags), 'export carries filter-1 flags');
+  ok(/^filter-1/.test(s1.filter.version) &&Array.isArray(s1.dialogue[0].flags), 'export carries filter-1 flags');
   ok(s1.pips.every(x => x.fingerprint && x.systemBlock) && s1.run.seed === '420', 'provenance: fingerprint, system line, seed');
   // deck
   await p.evaluate(`ChatRoom.exported = true; ChatRoom.clear(); ChatRoom.addPip(mk('Clover'));`);

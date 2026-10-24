@@ -22,10 +22,10 @@ ok(r.lines.length === d.length && r.lines.every((l, i) => l.text === d[i].text),
 const A = JSON.parse(fs.readFileSync('tests/fixtures/seed420-stateful.json', 'utf8'));
 const B = JSON.parse(fs.readFileSync('tests/fixtures/seed420-stateless.json', 'utf8'));
 const fa = filterDialogue(A.dialogue, A.pips.map(p => p.name)).filter, fb = filterDialogue(B.dialogue, B.pips.map(p => p.name)).filter;
-ok(fa.counts['fragment-run'] === 3, `stateful twin: fragment run of 3 (turns 16–18), got ${fa.counts['fragment-run']}`);
+ok(fa.counts['fragment-run'] === 6, `stateful twin: one six-line fragment chain (turns 16–21, Ed's catch), got ${fa.counts['fragment-run']}`);
 ok(fb.counts['heavy-theme'] === 4, `stateless twin: 4 heavy-theme lines (8, 11, 16, 33), got ${fb.counts['heavy-theme']}`);
 const rep = diversityReport([{ label: 'stateful', data: A }, { label: 'stateless', data: B }]);
-ok(rep.sharedOpenings[0] && rep.sharedOpenings[0].identicalLines === 6, 'twins replay 6 opening lines, then split');
+ok(rep.sharedOpenings[0] && rep.sharedOpenings[0].identicalLines === 6 && /window 5 \+ 1/.test(rep.sharedOpenings[0].note), 'twins replay 6 opening lines (= window 5 + 1), then split');
 ok(rep.sharedPhrases.length === 1 && rep.sharedPhrases[0].phrase === 'i don’t think so', 'after the split they share one phrase');
 ok(rep.recurringNames.length === 0, 'no invented name recurs across the twins');
 console.log(bad ? `\n${bad} FAILED` : '\nALL OK'); process.exit(bad ? 1 : 0);

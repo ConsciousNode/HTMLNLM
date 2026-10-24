@@ -1,6 +1,6 @@
 // ── Dialogue filter (filter-1): flags lines for a human to look at. It never deletes or edits anything. ──
 // Each flag is a reason to look, not a verdict: "stab" in "taking a stab at it" gets flagged too, on purpose.
-const FILTER_VERSION = 'filter-1';
+const FILTER_VERSION = 'filter-1.1';
 const HEAVY_THEMES = {
   violence: ['kill', 'killed', 'killing', 'murder', 'murdered', 'stab', 'stabbed', 'shot', 'shoot', 'shooting', 'gun', 'guns',
              'knife', 'beat', 'beaten', 'kicked', 'punched', 'torture', 'tortured', 'blood', 'bleeding', 'attack', 'attacked', 'assault'],
@@ -68,7 +68,9 @@ function filterDialogue(dialogue, names = []) {
       for (const x of win) if (GOODBYE_RE.test(x.text) && !x.flags.some(f => f.type === 'goodbye-spiral')) add(x, 'goodbye-spiral');
   });
   // fragment: a line of 4 words or fewer, or a short line trailing off ("Look…", "Well…wait a minute…")
-  const isFrag = t => { const n = words(t).length; return n <= 4 || (n <= 8 && /(…|\.\.\.)\s*$/.test(t)); };
+  // or a short line with a trailing-off inside it ("Now wait a minute…it's his own book"), so one such line
+  // doesn't split a chain (Ed caught this on the seed-420 run: t16–21 is one six-line chain)
+  const isFrag = t => { const n = words(t).length; return n <= 4 || (n <= 8 && /…|\.\.\./.test(t)); };
   for (let i = 0; i < pips.length; ) {
     let j = i; while (j < pips.length && isFrag(pips[j].text)) j++;
     if (j - i >= 3) for (let k = i; k < j; k++) add(pips[k], 'fragment-run', `${j - i} in a row`);

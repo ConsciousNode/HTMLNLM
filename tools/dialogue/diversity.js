@@ -1,6 +1,6 @@
 // ── Diversity check (diversity-1): how alike are a pile of dialogue exports? ──
 // Reports, it doesn't judge: the numbers say where runs repeat each other so a human can decide.
-const DIVERSITY_VERSION = 'diversity-1';
+const DIVERSITY_VERSION = 'diversity-1.1';
 const STOP = new Set(('i me my you your we our they them their he she him her it its a an the and or but if so to of in on at for with ' +
   'is are was were be been am do did does have has had not no yes just that this what who how why when where there here then ' +
   'can could would should will about from as by up out all some any more very really like know think okay ok well oh').split(' '));
@@ -42,7 +42,17 @@ function diversityReport(runs) {   // runs: [{ label, data }] where data is a di
   const sharedOpenings = [], skip = R.map(() => 0);
   for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) {
     let k = 0; while (k < R[i].lines.length && k < R[j].lines.length && R[i].lines[k].text === R[j].lines[k].text) k++;
-    if (k) { sharedOpenings.push({ a: R[i].label, b: R[j].label, identicalLines: k }); skip[i] = Math.max(skip[i], k); skip[j] = Math.max(skip[j], k); }
+    if (k) {
+      // the stateless context window explains most replays: the runs feed identical text until the window first drops a line
+      const win = r => { const s = r.data.run && r.data.run.segments && r.data.run.segments[0] && r.data.run.segments[0].settings;
+                         return s ? { mode: s.mode || 'stateless', contextLines: s.contextLines } : null; };
+      const wa = win(R[i]), wb = win(R[j]);
+      const w = [wa, wb].find(x => x && x.mode === 'stateless' && x.contextLines);
+      sharedOpenings.push({ a: R[i].label, b: R[j].label, identicalLines: k, windows: [wa, wb],
+        note: w ? (k === w.contextLines + 1 ? `= context window ${w.contextLines} + 1: they replay until the window first drops a line`
+                                            : `stateless context window was ${w.contextLines}`) : undefined });
+      skip[i] = Math.max(skip[i], k); skip[j] = Math.max(skip[j], k);
+    }
   }
   // phrases (4-grams) that turn up in more than one run, counted after any replayed opening
   const phraseRuns = new Map();
