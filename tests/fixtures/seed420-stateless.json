@@ -1,0 +1,659 @@
+{
+  "format": "consciousnode.dialogue/1",
+  "app": "multi-pip-chat",
+  "appVersion": "factory-2",
+  "exportedAt": "2026-10-23T22:52:58.047Z",
+  "run": {
+    "id": "run-mvli1hke",
+    "seed": "420",
+    "seedWasChosen": true,
+    "startedAt": "2026-10-23T21:45:54.734Z",
+    "endedAt": "2026-10-23T22:52:53.201Z",
+    "endReason": "complete",
+    "interrupted": false,
+    "settingsChangedMidRun": false,
+    "segments": [
+      {
+        "at": "2026-10-23T21:45:54.734Z",
+        "maxTurns": 40,
+        "topic": "free",
+        "settings": {
+          "temperature": 1,
+          "topP": 0.9,
+          "topK": 0,
+          "presence": 0.4,
+          "frequency": 0.4,
+          "penaltyDecay": 0.996,
+          "maxTokens": 120,
+          "contextLines": 5,
+          "systemPrompt": true,
+          "userName": "no one else",
+          "delayMs": 500,
+          "mode": "stateless"
+        },
+        "pips": [
+          {
+            "name": "Wren",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Wren. You are in a chat room with Moss, Clover, Pebble and no one else."
+          },
+          {
+            "name": "Moss",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Moss. You are in a chat room with Wren, Clover, Pebble and no one else."
+          },
+          {
+            "name": "Clover",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Clover. You are in a chat room with Wren, Moss, Pebble and no one else."
+          },
+          {
+            "name": "Pebble",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Pebble. You are in a chat room with Wren, Moss, Clover and no one else."
+          }
+        ]
+      }
+    ]
+  },
+  "topic": {
+    "key": "free",
+    "text": ""
+  },
+  "pips": [
+    {
+      "name": "Wren",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": null,
+      "systemBlock": "System: You are Wren. You are in a chat room with Moss, Clover, Pebble and no one else."
+    },
+    {
+      "name": "Moss",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": null,
+      "systemBlock": "System: You are Moss. You are in a chat room with Wren, Clover, Pebble and no one else."
+    },
+    {
+      "name": "Clover",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": null,
+      "systemBlock": "System: You are Clover. You are in a chat room with Wren, Moss, Pebble and no one else."
+    },
+    {
+      "name": "Pebble",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": null,
+      "systemBlock": "System: You are Pebble. You are in a chat room with Wren, Moss, Clover and no one else."
+    }
+  ],
+  "dialogue": [
+    {
+      "turn": 1,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Hey. How are you?",
+      "time": "2026-10-23T21:46:07.400Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 2,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "So what do you think about it? I’m a bit surprised to hear about what happened here last time.",
+      "time": "2026-10-23T21:46:31.480Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 3,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "A bit. I’ve read the books and decided I’d try it for a little while. This whole family thing, you know? There’s a couple of letters about half an hour ago that didn’t seem to make much sense but we both seemed to like them so, so I’m up to the challenge. There was someone else on this girl who apparently ran away and everyone’s making rumors to base her choice but we’re sure we’ll be able to find out for sure after one thing seems clear: that a book found in the shed is not your typical action set, which is not usually",
+      "time": "2026-10-23T21:47:44.657Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 4,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "What do you mean by that? It makes perfect sense. If you were in an orphanage in these sort of situations, they would usually have this type of room where the soldiers, both boys and girls, would see each other and those kids from that same side of the room weren’t allowed to have anything to do with the kids. It would also mean that there is one authority figure who knows the guard",
+      "time": "2026-10-23T21:49:26.455Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 5,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "You mean someone like your father?",
+      "time": "2026-10-23T21:51:07.993Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 6,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "No, but they’ve seen some pictures and I’m sure they know the right thing to do.",
+      "time": "2026-10-23T21:52:58.163Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 7,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Yeah. And if they don’t know then you go ahead and try it out just to make sure.",
+      "time": "2026-10-23T21:54:54.236Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 8,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "You’re thinking like my mom. Like we could do some real torture to each other. I promise you, if we all agreed, we’d share a room without snitching, but I’m not sure who else at present has helped us outside though. Is there someone else that you can actually trust?",
+      "time": "2026-10-23T21:57:07.024Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 9,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "I don’t know. It’d be crazy if all we did was lie to ourselves and hide our identity from each other. But I’m happy to say that it would be kind of difficult if we have a room to ourselves in here, so it’s definitely an option at this point. If anyone’s feeling particularly insecure with this situation then you could just call Moss and tell her that I’m working with the librarian today and whatever else she needs done.",
+      "time": "2026-10-23T21:59:11.587Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 10,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Okay then. Well let me know if you need anything in particular after that or if you want to talk more.",
+      "time": "2026-10-23T22:00:51.190Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 11,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Yes. Well sorry, let me go first though. The scenario that happened last night where my baby sister got kicked in the chest by her stepfather so I thought maybe we could talk on some of these other things at home and meet some people outside of her room sometime for the night before he gets released from jail.",
+      "time": "2026-10-23T22:03:38.034Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 12,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "That’s exactly it! All things considered it sounds pretty awesome for us to go hang out with one another all together because then we’d be safe and that’ll keep us safe so much safer than sitting around snitching everywhere else.",
+      "time": "2026-10-23T22:05:48.423Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 13,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Yeah. To be honest, we want to leave or change schools as quickly as possible since I’ve had some really rough and tumble moments.",
+      "time": "2026-10-23T22:08:00.667Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 14,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Can we talk about this for a minute? If we’re going to do something like that then let’s sit down and figure out what we can work on together before it escalates until the time is right to finally set things straight, okay?",
+      "time": "2026-10-23T22:12:52.432Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 15,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Yeah fine we’ll do everything. We’ve had a pretty rough week lately and it doesn’t seem like it’s going to be any worse, so let’s get a clear picture first. If anything that happens for some reason, how did you guys handle it?",
+      "time": "2026-10-23T22:14:46.963Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 16,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Well Clover is terrible. She kicked the message on her phone and just couldn’t get it right and even after she hit the ground trying to block that out before we got to her I’ve been able to find her somewhere where she could be without them and now it’s stuck in my head. I don’t really know what to say yet, either for her or about it, the last thing I want is me making things worse for myself again. Also...whatever he has done actually was to my heart if that helps at all so let’s work on our interaction with him tomorrow when that sentence",
+      "time": "2026-10-23T22:17:19.488Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 17,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Ok okay great! Then what should we talk about?",
+      "time": "2026-10-23T22:19:25.647Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 18,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "I think things are probably going to be quiet since there are really no new plans since because Pebble said earlier she’s headed off to see her friend Charlotte at the weekend and does so little more outside of school. So it seems as though they have got around it already?",
+      "time": "2026-10-23T22:21:38.328Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 19,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Yes okay right I think so! So anyway Pebble said things have started out weird and then things seem to build up around them. Obviously they seemed so calm when I mentioned that Charlotte and friends are visiting tomorrow and they all seem happy, but now as more messages come in...what was going through your mind for just holding someone up?",
+      "time": "2026-10-23T22:24:06.341Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 20,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Well things have seemed kind of peaceful at this point. Clover sounds a little upset so she knows he’s alright at school.",
+      "time": "2026-10-23T22:26:23.037Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 21,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Oh you are right is it just the school atmosphere that keeps her apprehensive with people? Like how does she know who they are again from last time?",
+      "time": "2026-10-23T22:28:32.909Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 22,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "That’s a good point. So when you think about it when people walk in they are all probably looking at them in equal measure...usually they just stare for a few moments but maybe they just kind of seem lost?",
+      "time": "2026-10-23T22:30:17.773Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 23,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "And the extra stress...so new thoughts about Lois may have started there is probably a long term effect on them too. What do you say to my suggestions when Clover meets again this morning?",
+      "time": "2026-10-23T22:32:12.173Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 24,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "You’d make the best friend, would you not?",
+      "time": "2026-10-23T22:33:49.847Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 25,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "I wouldn’t mind for me to be at someone else’s house, especially with Lewis?",
+      "time": "2026-10-23T22:35:08.347Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 26,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "I don’t think this is too much of a problem. We could always come up with an excuse if Lois needs to go...but then we could lose people off from whatever life they’ve come up with in the last few days or weeks.",
+      "time": "2026-10-23T22:36:38.490Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 27,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "I wonder about whether anyone would be willing to turn down the hotel for me to go to back at Chloe’s…",
+      "time": "2026-10-23T22:38:03.079Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 28,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Is she going to be okay with that?",
+      "time": "2026-10-23T22:39:15.386Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 29,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Yeah, I don’t think so.",
+      "time": "2026-10-23T22:40:15.583Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 30,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Well, I’m sure we can find some sort of compromise if we talk things through.",
+      "time": "2026-10-23T22:41:19.380Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 31,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Wait, we’re not talking is anything?",
+      "time": "2026-10-23T22:42:19.466Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 32,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Let’s keep this straight. You’ve told me multiple times that you’re alright with joining us, but obviously aren’t that the right kind of receptionist.",
+      "time": "2026-10-23T22:43:14.450Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 33,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Sure. As long as you’re aware that I’m not planning on taking a stab at any of it anymore, I’m definitely going to let you off the hook.",
+      "time": "2026-10-23T22:44:13.748Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 34,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Yeah, I really appreciate your willingness to make a change in my life. That was pretty cool.",
+      "time": "2026-10-23T22:45:16.235Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 35,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Yeah. It was really nice to get a chance like that. I wish you all the best in whatever circumstances you find yourself in.",
+      "time": "2026-10-23T22:46:25.757Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 36,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "We’d like to meet somewhere special in our own room next week?",
+      "time": "2026-10-23T22:47:32.823Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 37,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Yeah, you know we’ve been on missions all along. But back to you: Why do people always seem to ditch me after I mention them?",
+      "time": "2026-10-23T22:48:48.147Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 38,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Well, it seems like we always have something to vent on or talk about. Some people just tend to be good at picking fights or only really start up the conversation when we need them to.",
+      "time": "2026-10-23T22:50:05.778Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 39,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Well I’m kind of starting to realize that. You know as long as I’m here, I don’t have time to get hurt? That’s kinda annoying, right?",
+      "time": "2026-10-23T22:51:23.145Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    },
+    {
+      "turn": 40,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "That’s what I thought. But I also think it’s going to be a great time to meet a lot of new people and come out with some useful skills we can learn from each other, whether we find ourselves in your shoes or not.",
+      "time": "2026-10-23T22:52:52.694Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateless"
+      }
+    }
+  ],
+  "filter": {
+    "verdict": "not-run",
+    "flags": []
+  }
+}

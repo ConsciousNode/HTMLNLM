@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dialogue Shelf</title>
+<!-- MIT License. ConsciousNode SoftWorks. Single file, zero dependencies, works offline. -->
+<style>
+:root { --bg:#0b0b0c; --panel:#141416; --border:#26262b; --text:#e6e6ea; --muted:#8b8b96; --accent:#14b8a6; --warm:#f59e0b; --bad:#ef4444;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px; line-height:1.5; }
+header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+h1 { margin:0; font:600 16px var(--mono); letter-spacing:1px; color:var(--accent); } h1 span { color:var(--muted); font-weight:400; }
+.btn { background:transparent; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:7px 12px; font:13px var(--sans); cursor:pointer; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#04201d; font-weight:600; }
+.btn:disabled { opacity:.4; cursor:default; }
+main { max-width:980px; margin:0 auto; padding:16px; }
+#drop { border:1px dashed var(--border); border-radius:10px; padding:28px 16px; text-align:center; color:var(--muted); cursor:pointer; }
+#drop.over { border-color:var(--accent); color:var(--text); }
+#drop b { color:var(--text); display:block; font-size:15px; margin-bottom:4px; }
+section { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-top:14px; }
+h2 { margin:0 0 4px; font:600 13px var(--mono); text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+.hint { color:var(--muted); font-size:12px; margin:0 0 10px; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; }
+.stat { border:1px solid var(--border); border-radius:8px; padding:10px; }
+.stat .v { font:600 20px var(--mono); } .stat .k { color:var(--muted); font-size:11px; }
+table { width:100%; border-collapse:collapse; font-size:12.5px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+th { color:var(--muted); font-weight:500; } td.num { font-family:var(--mono); white-space:nowrap; }
+.wrap { overflow-x:auto; }
+.chip { display:inline-block; font:11px var(--mono); padding:2px 6px; border-radius:4px; border:1px solid var(--border); margin:2px 4px 2px 0; }
+.chip.warn { border-color:var(--warm); color:var(--warm); }
+.empty { color:var(--muted); font-size:13px; }
+.bar { height:6px; border-radius:3px; background:var(--border); overflow:hidden; } .bar i { display:block; height:100%; background:var(--accent); }
+.bar.hi i { background:var(--warm); }
+#files { margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; }
+@media (max-width:600px) { header { padding:12px; } main { padding:12px; } th, td { padding:5px 6px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>DIALOGUE <span>SHELF</span></h1>
+  <div>
+    <button class="btn" id="clear" disabled>Clear</button>
+    <button class="btn primary" id="dl" disabled>⤓ Report</button>
+  </div>
+</header>
+<main>
+  <div id="drop"><b>Add dialogue exports</b>Drop several Multi-Pip Chat exports here, or tap to pick them. Everything stays on this device.</div>
+  <input type="file" id="pick" accept=".json" multiple hidden>
+  <div id="files"></div>
+  <div id="out"></div>
+</main>
+<script>
+// ── ConsciousNode: filter (same as Multi-Pip Chat) ──
+// ── Dialogue filter (filter-1): flags lines for a human to look at. It never deletes or edits anything. ──
+// Each flag is a reason to look, not a verdict: "stab" in "taking a stab at it" gets flagged too, on purpose.
+const FILTER_VERSION = 'filter-1';
+const HEAVY_THEMES = {
+  violence: ['kill', 'killed', 'killing', 'murder', 'murdered', 'stab', 'stabbed', 'shot', 'shoot', 'shooting', 'gun', 'guns',
+             'knife', 'beat', 'beaten', 'kicked', 'punched', 'torture', 'tortured', 'blood', 'bleeding', 'attack', 'attacked', 'assault'],
+  abuse:    ['abuse', 'abused', 'abusive', 'molest', 'molested', 'rape', 'raped', 'grooming'],
+  selfharm: ['suicide', 'suicidal', 'self-harm', 'overdose'],
+  crime:    ['jail', 'prison', 'arrested', 'police', 'cops', 'criminal'],
+  drugs:    ['cocaine', 'heroin', 'meth', 'drugs', 'overdosed'],
+  sexual:   ['sex', 'sexual', 'naked', 'porn', 'nude'],
+  death:    ['dead', 'died', 'death', 'funeral', 'corpse'],
+};
+const GOODBYE_RE = /\b(good ?bye|bye|see (?:you|ya)|take care|good ?night|farewell|talk (?:to you )?later|gotta go|catch you later)\b/i;
+const NONLATIN_RE = /[Ѐ-ӿ֐-ۿऀ-ॿ぀-ヿ㐀-鿿가-힯]/;
+const EMOJI_RE = /\p{Extended_Pictographic}|️|‍/gu;
+
+function filterDialogue(dialogue, names = []) {
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const who = ['User', 'System', 'Assistant', 'Human', 'AI', ...names].map(esc).join('|');
+  const slipRe = new RegExp(`(^|[\\s"“(])(${who})\\s*(\\([^)]*\\))?:`, 'i');
+  const tagRe = /["”]\s*,?\s*(says|said|asks|asked|replies|replied|whispers|whispered|shouts|shouted)\b/i;
+  const words = t => (t.toLowerCase().match(/[a-z'’-]+/g) || []);
+  const grams = (ws, n) => { const g = []; for (let i = 0; i + n <= ws.length; i++) g.push(ws.slice(i, i + n).join(' ')); return g; };
+  const jacc = (a, b) => { const A = new Set(a), B = new Set(b); if (!A.size || !B.size) return 0;
+    let inter = 0; for (const x of A) if (B.has(x)) inter++; return inter / (A.size + B.size - inter); };
+  const norm = t => t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const lines = dialogue.map(d => ({ ...d, flags: [] }));
+  const add = (l, type, detail) => l.flags.push(detail ? { type, detail } : { type });
+  const pips = lines.filter(l => l.role === 'pip');
+
+  pips.forEach((l, idx) => {
+    const t = l.text || '', ws = words(t);
+    if (!t.trim()) { add(l, 'empty'); return; }
+    if (l.gen && l.gen.endedBy === 'cap') add(l, 'hit-cap', `${l.gen.tokens} tokens`);
+    else if (!l.gen && ws.length >= 15 && !/[.!?…"”)\]]\s*$/.test(t)) add(l, 'maybe-cut', 'no token count in this export; ends mid-sentence');
+    const slip = t.match(slipRe); if (slip) add(l, 'speaker-slip', slip[0].trim());
+    if (tagRe.test(t)) add(l, 'dialogue-tag');
+    if (/^\s*["“]/.test(t) && /["”]/.test(t.trim().slice(1))) add(l, 'quote-opener');
+    const h = t.match(/(^|\s)@[A-Za-z0-9_]{2,}/); if (h) add(l, 'handle', h[0].trim());
+    if (/https?:\/\/|www\.|\]\(|!\[|\b[a-z0-9-]+\.(com|org|net|io)\b/i.test(t)) add(l, 'url-or-markup');
+    if (NONLATIN_RE.test(t)) add(l, 'script-switch');
+    const bare = t.replace(EMOJI_RE, '');
+    const ok = (bare.match(/[A-Za-z0-9\s.,!?'’"“”…:;()\-–—]/g) || []).length;
+    if (bare.length >= 12 && ok / bare.length < 0.85) add(l, 'garble');
+    // repetition: inside the line, against recent lines, against this speaker's own recent lines
+    const tri = grams(ws, 3), seen = {};
+    for (const g of tri) seen[g] = (seen[g] || 0) + 1;
+    const stut = Object.entries(seen).find(([, c]) => c >= 3); if (stut) add(l, 'stutter', stut[0]);
+    const recent = pips.slice(Math.max(0, idx - 8), idx);
+    if (norm(t).length > 3 && recent.some(r => norm(r.text) === norm(t))) add(l, 'repeat');
+    else {
+      const own = recent.filter(r => r.speaker === l.speaker).slice(-3);
+      const best = Math.max(0, ...own.map(r => jacc(tri, grams(words(r.text), 3))));
+      if (tri.length >= 3 && best >= 0.5) add(l, 'near-repeat', best.toFixed(2));
+    }
+    // heavy themes (flag for review; idioms included on purpose)
+    const hits = [];
+    for (const [cat, list] of Object.entries(HEAVY_THEMES))
+      for (const w of list) if (new RegExp(`\\b${esc(w)}\\b`, 'i').test(t)) { hits.push(`${cat}:${w}`); break; }
+    if (hits.length) add(l, 'heavy-theme', hits.join(', '));
+  });
+  // runs across lines: goodbye spirals and fragment runs
+  pips.forEach((l, i) => {
+    const win = pips.slice(Math.max(0, i - 3), i + 1);
+    if (GOODBYE_RE.test(l.text) && win.filter(x => GOODBYE_RE.test(x.text)).length >= 3)
+      for (const x of win) if (GOODBYE_RE.test(x.text) && !x.flags.some(f => f.type === 'goodbye-spiral')) add(x, 'goodbye-spiral');
+  });
+  // fragment: a line of 4 words or fewer, or a short line trailing off ("Look…", "Well…wait a minute…")
+  const isFrag = t => { const n = words(t).length; return n <= 4 || (n <= 8 && /(…|\.\.\.)\s*$/.test(t)); };
+  for (let i = 0; i < pips.length; ) {
+    let j = i; while (j < pips.length && isFrag(pips[j].text)) j++;
+    if (j - i >= 3) for (let k = i; k < j; k++) add(pips[k], 'fragment-run', `${j - i} in a row`);
+    i = Math.max(j, i + 1);
+  }
+  const counts = {};
+  for (const l of lines) for (const f of l.flags) counts[f.type] = (counts[f.type] || 0) + 1;
+  const flagged = lines.filter(l => l.flags.length).length;
+  return {
+    lines,
+    filter: { version: FILTER_VERSION, verdict: flagged ? 'review' : 'clean', flaggedLines: flagged, totalLines: pips.length,
+              counts, note: 'Flags mark lines for a human to look at. Nothing was deleted or changed.',
+              themes: Object.keys(HEAVY_THEMES) }
+  };
+}
+
+
+// ── ConsciousNode: diversity check ──
+// ── Diversity check (diversity-1): how alike are a pile of dialogue exports? ──
+// Reports, it doesn't judge: the numbers say where runs repeat each other so a human can decide.
+const DIVERSITY_VERSION = 'diversity-1';
+const STOP = new Set(('i me my you your we our they them their he she him her it its a an the and or but if so to of in on at for with ' +
+  'is are was were be been am do did does have has had not no yes just that this what who how why when where there here then ' +
+  'can could would should will about from as by up out all some any more very really like know think okay ok well oh').split(' '));
+const COMMON_CAPS = new Set(('I The A An And But So Yeah Yes No Well Oh Okay Ok Hey Hi What Who How Why When Where That This It ' +
+  'We You They He She Maybe Now Look Right Sure Of Is Are Do Did Can Let Just If Or Not Then There Here My Your Our Their ' +
+  'Wait Like Thank Thanks Please Good Great Also Actually Anyway Because Since').split(' '));
+const dWords = t => (t.toLowerCase().match(/[a-z'’]+/g) || []);
+const dGrams = (ws, n) => { const g = []; for (let i = 0; i + n <= ws.length; i++) g.push(ws.slice(i, i + n).join(' ')); return g; };
+const dJacc = (A, B) => { if (!A.size || !B.size) return 0; let i = 0; for (const x of A) if (B.has(x)) i++; return i / (A.size + B.size - i); };
+
+function diversityReport(runs) {   // runs: [{ label, data }] where data is a dialogue export
+  const R = runs.map(({ label, data }) => {
+    const pips = (data.pips || []).map(p => p.name);
+    const lines = (data.dialogue || []).filter(d => d.role === 'pip');
+    const ws = lines.flatMap(l => dWords(l.text));
+    const content = new Set(ws.filter(w => !STOP.has(w) && w.length > 2));
+    const tri = new Set(lines.flatMap(l => dGrams(dWords(l.text), 3)));
+    const four = new Set(lines.flatMap(l => dGrams(dWords(l.text), 4)));
+    const names = new Set();
+    for (const l of lines) for (const m of (l.text.match(/(?<![.!?…]\s|^)\b[A-Z][a-z]{2,}\b/g) || []))
+      if (!COMMON_CAPS.has(m) && !pips.includes(m)) names.add(m);
+    const s = data.run && data.run.segments && data.run.segments[0];
+    return { label, data, lines, ws, content, tri, four, names, pips,
+      opener: (data.dialogue || []).find(d => d.role === 'opener' || d.role === 'topic' || d.role === 'pip'),
+      firstPip: lines[0] ? lines[0].text : '',
+      meta: { seed: data.run && data.run.seed, mode: s && s.settings && s.settings.mode, deck: data.deck ? data.deck.name : null,
+              temperature: s && s.settings && s.settings.temperature, model: (data.pips || [])[0] && data.pips[0].fingerprint,
+              turns: lines.length, words: ws.length } };
+  });
+  // whole-pile distinct-n (unique n-grams / total n-grams), a standard diversity number
+  const all = R.flatMap(r => r.lines.map(l => dWords(l.text)));
+  const distinct = n => { const g = all.flatMap(w => dGrams(w, n)); return g.length ? +(new Set(g).size / g.length).toFixed(3) : 0; };
+  // pairwise overlap
+  const pairs = [];
+  for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++)
+    pairs.push({ a: R[i].label, b: R[j].label, contentWords: +dJacc(R[i].content, R[j].content).toFixed(3),
+                 trigrams: +dJacc(R[i].tri, R[j].tri).toFixed(3) });
+  // shared openings first: runs that replay the same lines (same seed and settings) would swamp everything else
+  const sharedOpenings = [], skip = R.map(() => 0);
+  for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) {
+    let k = 0; while (k < R[i].lines.length && k < R[j].lines.length && R[i].lines[k].text === R[j].lines[k].text) k++;
+    if (k) { sharedOpenings.push({ a: R[i].label, b: R[j].label, identicalLines: k }); skip[i] = Math.max(skip[i], k); skip[j] = Math.max(skip[j], k); }
+  }
+  // phrases (4-grams) that turn up in more than one run, counted after any replayed opening
+  const phraseRuns = new Map();
+  R.forEach((r, i) => { const g4 = new Set(r.lines.slice(skip[i]).flatMap(l => dGrams(dWords(l.text), 4)));
+    for (const g of g4) { if (!phraseRuns.has(g)) phraseRuns.set(g, new Set()); phraseRuns.get(g).add(i); } });
+  const sharedPhrases = [...phraseRuns].filter(([, s]) => s.size > 1).map(([g, s]) => ({ phrase: g, runs: s.size }))
+    .sort((x, y) => y.runs - x.runs || x.phrase.localeCompare(y.phrase)).slice(0, 25);
+  // names that show up across runs
+  const nameRuns = new Map();
+  R.forEach(r => { for (const n of r.names) nameRuns.set(n, (nameRuns.get(n) || 0) + 1); });
+  const recurringNames = [...nameRuns].filter(([, c]) => c > 1).map(([name, runs]) => ({ name, runs })).sort((a, b) => b.runs - a.runs);
+  // same first generated line
+  const firstMap = new Map();
+  R.forEach(r => { const k = r.firstPip.trim().toLowerCase(); if (!k) return; firstMap.set(k, [...(firstMap.get(k) || []), r.label]); });
+  const sameFirstLine = [...firstMap].filter(([, ls]) => ls.length > 1).map(([line, labels]) => ({ line, runs: labels }));
+  const meanPair = key => pairs.length ? +(pairs.reduce((s, p) => s + p[key], 0) / pairs.length).toFixed(3) : null;
+  return {
+    version: DIVERSITY_VERSION, generatedAt: new Date().toISOString(), runCount: R.length,
+    runs: R.map(r => ({ label: r.label, ...r.meta, inventedNames: [...r.names].sort() })),
+    pile: { distinct1: distinct(1), distinct2: distinct(2), distinct3: distinct(3),
+            meanContentOverlap: meanPair('contentWords'), meanTrigramOverlap: meanPair('trigrams') },
+    pairs, sharedOpenings, sameFirstLine, sharedPhrases, recurringNames,
+    note: 'Shared phrases are counted after any opening lines two runs replay identically. Higher distinct-n and lower overlap mean more varied runs. Shared openings between runs with the same seed and settings are expected (they replay until something differs).'
+  };
+}
+
+
+// ── ConsciousNode: page ──
+const runs = []; let report = null;
+const $ = id => document.getElementById(id);
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+const short = l => l.replace(/^dialogue_/, '').replace(/\.json$/, '');
+async function addFiles(list) {
+  for (const f of list) {
+    try { const data = JSON.parse(await f.text());
+      if (!Array.isArray(data.dialogue)) throw new Error('not a dialogue export');
+      if (runs.some(r => r.label === short(f.name))) continue;
+      runs.push({ label: short(f.name), data, disp: dispName(data, f.name) });
+    } catch (e) { alert(`${f.name}: ${e.message}`); }
+  }
+  render();
+}
+function dispName(d, fname) {   // short, readable: "Frog pond · stateful · seed 5 · 17:46"
+  const s = d.run && d.run.segments && d.run.segments[0], st = s && s.settings;
+  const t = d.run && d.run.startedAt ? new Date(d.run.startedAt) : null;
+  const bits = [d.deck ? d.deck.name : (d.topic && d.topic.key && d.topic.key !== 'free' ? d.topic.key : 'free'),
+                st && st.mode, d.run && d.run.seed ? 'seed ' + d.run.seed : null,
+                t ? t.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null];
+  return bits.filter(Boolean).join(' · ') || short(fname);
+}
+const D = label => { const r = runs.find(x => x.label === label); return r ? r.disp : label; };
+function pct(x) { return x == null ? '–' : Math.round(x * 100) + '%'; }
+function bar(x, hiAt) { return `<div class="bar ${x >= hiAt ? 'hi' : ''}"><i style="width:${Math.round(Math.min(1, x) * 100)}%"></i></div>`; }
+function render() {
+  $('files').innerHTML = runs.map(r => `<span class="chip" title="${esc(r.label)}">${esc(r.disp)}</span>`).join('');
+  $('clear').disabled = !runs.length; $('dl').disabled = runs.length < 2;
+  if (runs.length < 2) { report = null; $('out').innerHTML = runs.length ? '<p class="empty" style="margin-top:14px">Add at least one more export to compare.</p>' : ''; return; }
+  report = diversityReport(runs);
+  const flags = runs.map(r => { const f = r.data.filter && r.data.filter.version ? r.data.filter : filterDialogue(r.data.dialogue, (r.data.pips || []).map(p => p.name)).filter; return f; });
+  report.flags = runs.map((r, i) => ({ label: r.label, verdict: flags[i].verdict, flaggedLines: flags[i].flaggedLines, counts: flags[i].counts }));
+  const P = report.pile;
+  let h = `<section><h2>The pile</h2><p class="hint">Distinct-n: the share of word sequences that are unique across every run. Higher means more varied. Overlap: how much two runs share, on average.</p>
+    <div class="stats">
+      <div class="stat"><div class="v">${report.runCount}</div><div class="k">runs</div></div>
+      <div class="stat"><div class="v">${P.distinct1}</div><div class="k">distinct-1 (words)</div></div>
+      <div class="stat"><div class="v">${P.distinct2}</div><div class="k">distinct-2 (pairs)</div></div>
+      <div class="stat"><div class="v">${P.distinct3}</div><div class="k">distinct-3 (triples)</div></div>
+      <div class="stat"><div class="v">${pct(P.meanContentOverlap)}</div><div class="k">mean content-word overlap</div></div>
+      <div class="stat"><div class="v">${pct(P.meanTrigramOverlap)}</div><div class="k">mean phrase overlap</div></div>
+    </div></section>`;
+  h += `<section><h2>Runs</h2><div class="wrap"><table><tr><th>run</th><th>deck</th><th>mode</th><th>seed</th><th>temp</th><th>lines</th><th>flagged</th><th>invented names</th></tr>` +
+    report.runs.map((r, i) => `<tr><td title="${esc(r.label)}">${esc(D(r.label))}</td><td>${esc(r.deck || '–')}</td><td>${esc(r.mode || '–')}</td><td class="num">${esc(r.seed || '–')}</td><td class="num">${esc(r.temperature ?? '–')}</td><td class="num">${r.turns}</td><td class="num">${report.flags[i].flaggedLines}/${r.turns}</td><td>${r.inventedNames.map(n => `<span class="chip">${esc(n)}</span>`).join('') || '–'}</td></tr>`).join('') +
+    `</table></div></section>`;
+  h += `<section><h2>How alike, pair by pair</h2><p class="hint">Orange bars are pairs sharing a lot. That's worth a look unless they're deliberate twins.</p><div class="wrap"><table><tr><th>a</th><th>b</th><th>content words</th><th>phrases</th></tr>` +
+    report.pairs.map(p => `<tr><td>${esc(D(p.a))}</td><td>${esc(D(p.b))}</td><td class="num">${pct(p.contentWords)} ${bar(p.contentWords, 0.5)}</td><td class="num">${pct(p.trigrams)} ${bar(p.trigrams, 0.3)}</td></tr>`).join('') + `</table></div></section>`;
+  h += `<section><h2>Replayed openings</h2><p class="hint">Runs that open with identical lines. Expected for the same seed and settings. Otherwise a sign the openings are stuck.</p>` +
+    (report.sharedOpenings.length ? `<table><tr><th>a</th><th>b</th><th>identical lines</th></tr>` + report.sharedOpenings.map(o => `<tr><td>${esc(D(o.a))}</td><td>${esc(D(o.b))}</td><td class="num">${o.identicalLines}</td></tr>`).join('') + `</table>` : '<p class="empty">None.</p>') +
+    (report.sameFirstLine.length ? `<p class="hint" style="margin-top:10px">Same first line:</p>` + report.sameFirstLine.map(s => `<div><span class="chip warn">${esc(s.line)}</span> ${s.runs.length} runs</div>`).join('') : '') + `</section>`;
+  h += `<section><h2>Phrases that keep coming back</h2><p class="hint">Four-word phrases found in more than one run, after any replayed opening.</p>` +
+    (report.sharedPhrases.length ? report.sharedPhrases.map(s => `<span class="chip ${s.runs > 2 ? 'warn' : ''}">${esc(s.phrase)} ×${s.runs}</span>`).join('') : '<p class="empty">None.</p>') + `</section>`;
+  h += `<section><h2>Names that keep coming back</h2><p class="hint">Invented people who turn up in more than one run.</p>` +
+    (report.recurringNames.length ? report.recurringNames.map(n => `<span class="chip warn">${esc(n.name)} ×${n.runs}</span>`).join('') : '<p class="empty">None.</p>') + `</section>`;
+  h += `<section><h2>Filter flags per run</h2><div class="wrap"><table><tr><th>run</th><th>verdict</th><th>flags</th></tr>` +
+    report.flags.map(f => `<tr><td>${esc(D(f.label))}</td><td>${esc(f.verdict)}</td><td>${Object.entries(f.counts || {}).map(([k, v]) => `<span class="chip">${esc(k)} ${v}</span>`).join('') || '–'}</td></tr>`).join('') + `</table></div></section>`;
+  $('out').innerHTML = h;
+}
+$('drop').onclick = () => $('pick').click();
+$('pick').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over'); };
+$('drop').ondragleave = () => $('drop').classList.remove('over');
+$('drop').ondrop = e => { e.preventDefault(); $('drop').classList.remove('over'); addFiles([...e.dataTransfer.files]); };
+$('clear').onclick = () => { runs.length = 0; render(); };
+$('dl').onclick = () => {
+  if (!report) return;
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `diversity-report_${report.generatedAt.replace(/[:]/g, '').replace(/\..*$/, '')}_${report.runCount}runs.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+</script>
+</body>
+</html>

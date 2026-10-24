@@ -38,7 +38,7 @@ Or download [`HTMLNLM.html`](https://github.com/ConsciousNode/HTMLNLM/blob/main/
 | **AdamW** | Mobile-friendly fallback optimizer, auto-selected on battery-constrained devices. |
 | **GRPO alignment** | Group Relative Policy Optimization — critic-free RL alignment with Z-score normalized advantages and KL divergence constraint. |
 | **BPE tokenizer** | Byte Pair Encoding compiled in a WebWorker — doesn't block the UI thread. |
-| **Pip Suite** | Companion tools: Junto orchestrator, multi-pip chat, Pip's Room. |
+| **Pip Suite** | Companion tools: Junto orchestrator, multi-pip chat (now a dialogue factory), Pip's Room, Dialogue Shelf. |
 
 ---
 
@@ -104,6 +104,7 @@ The `pip-suite/` directory contains companion tools that work with HTMLNLM model
 - **Junto Orchestrator** — multi-instance coordination
 - **Multi-Pip Chat** — concurrent model conversations
 - **Pip's Room** — single-instance chat interface
+- **Dialogue Shelf** — drop in several Multi-Pip Chat exports and see how alike they are
 
 **Real RWKV-7 guests (v1.4, Pip's Room since v1.5).** Junto, Multi-Pip Chat and Pip's Room also load **official RWKV-7 "Goose" (x070) checkpoints**: drop a `.pth` straight from [BlinkDL's releases](https://huggingface.co/BlinkDL) (no PyTorch, no conversion) or a `.safetensors`. They run on the real architecture (per-head matrix memory) with the official **RWKV World tokenizer**, both embedded in the page, so each page is still one file that works offline. Old `.pip` / `.json` models load exactly as before, side by side with real ones.
 
@@ -126,6 +127,22 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 ---
 
 ## Changelog
+
+### v1.11 — 2026-10-23 · Kehai Interim + Kham — the dialogue factory (Multi-Pip Chat), the thread bridge (Pip's Room), Dialogue Shelf
+
+Multi-Pip Chat can now produce synthetic conversation data with a clean paper trail: four 0.1B models in a phone browser tab, offline, with a stamp on every line saying exactly how it was made.
+
+- **Two fixes first, both real.** (1) **The topic never reached the models.** It was a display-only banner that the prompt builder skipped, and the branch meant to seed it never fired because the banner had already been posted. Every topic run before this was really Free Discussion. Now the topic enters the room as the first chat line, in your name. (2) **Typing into a running chat put your line in the prompt twice,** ending in a malformed `Pip:User: …`, which is a likely source of "User:" slips. Both are fixed and tested.
+- **Export (⤓).** The provenance stamp records: the model file plus a fingerprint (SHA-256 of size + first and last MB), each Pip's note and exact system line, every sampler setting, per-line temperature/penalty/mode and how the line ended (newline, end of text or **hit the cap**), the seed, start and end times, and whether you interrupted.
+- **Seeds.** A seeded sampler (Seed in ⚙ Dev; blank = random but recorded). Same seed + model + settings with no interruptions replays the chat word for word.
+- **Stateful mode** (⚙ Dev, on by default). Each Pip keeps one RWKV state for the whole chat and reads only the lines it hasn't heard, in the same `Name: text` form as before. Its own line is read back in that form too, so what it remembers is exactly what's on screen. On Kham's phone (seed 420, four 191M Pips, cap 120, 40 turns): 44 minutes stateful vs 67 stateless.
+- **Filter (filter-1). It flags lines for a human to look at; it never deletes or changes anything.** Live badges on the bubbles and per-line flags in the export: speaker slips, dialogue tags, quote openers, @handles, URLs/markdown, script switches, garble, stutters, repeats, near-repeats, heavy themes (violence, abuse, self-harm, crime, drugs, sexual, death), goodbye spirals, fragment runs, hit-cap. "Taking a stab at it" gets flagged on purpose: that's why it flags.
+- **Scenario decks** in the Topic menu. A deck is a saved cast (names + notes), a scripted opening line spoken by one of them, and optionally settings. Built-ins: Frog pond, Workshop disagreement, Kitchen lesson, Cancelled plans (gently), Lost key, and Open room (the seed-420 setup). Save, delete, download and load your own in ⚙ Dev. A deck changed by hand is recorded as modified.
+- **Smaller:** placeholder names (Wren, Moss, Clover, Pebble…) instead of the file name, and every Pip must be named before Start; Clear asks before throwing away an unexported chat; model text is escaped in the page.
+- **Pip's Room: the thread bridge is adjustable.** A new thread starts with a few of the resident's own summaries from other threads. That was fixed at 3 × 140 characters; now it's *Bridge: summaries* (default 3, 0 = none) and *Bridge: length* (default 200) in the console.
+- **Dialogue Shelf** (`pip-suite/dialogue-shelf.html`, one file, offline): pick several exports and see distinct-1/2/3, pairwise overlap, replayed openings, recurring four-word phrases (after any replayed opening), recurring invented names and each run's filter flags. Download the report. The same filter and diversity check run from the command line in `tools/dialogue/`.
+- **Tests:** `tests/real/multi-pip-factory.js` (stand-in models, Playwright) checks that the topic reaches the prompt, an interjection appears once, a seed replays exactly, stateful and stateless match while the chat fits the window (6 lines), how each line ended is recorded, provenance and flags are in the export, and deck naming, opener and turn order work. `tests/dialogue-tools.js` (no dependencies) runs every flag type on made-up lines, and runs the filter and diversity check on the two real seed-420 twins in `tests/fixtures/` (6 replayed lines, then a single shared phrase: *"i don't think so"*). The Pip's Room repeat-guard and layout tests still pass; the bridge was checked in the page (3 × 200, 2 × 30, 0 = none). The engine block is byte-identical. No page errors.
+- **Receipts, honestly:** the fingerprint hashes only the first and last megabyte, not the whole file. One seed-420 pair is a lean, not a finding, on what stateful memory does to a conversation.
 
 ### v1.10.3 — 2026-10-22 · Kehai Interim + Kham — transcript slips caught mid-line (Pip's Room)
 

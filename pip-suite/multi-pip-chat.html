@@ -371,6 +371,9 @@ header h1 span {
   letter-spacing: 0.5px;
 }
 
+.msg-flags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; }
+.msg-flag { font-size: 9px; line-height: 1; padding: 3px 5px; border-radius: 4px; border: 1px solid var(--warm, #f59e0b);
+            color: var(--warm, #f59e0b); opacity: 0.85; text-transform: none; letter-spacing: 0; }
 .message-time {
   font-size: 10px;
   color: var(--text-muted);
@@ -632,6 +635,9 @@ header h1 span {
 
 /* developer console (shared look across the Pip Suite) */
 .dev-panel { border-top: 1px solid var(--border); padding: 10px 16px 14px; font-size: 12px; }
+.deck-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; color: var(--text-muted, #9aa); }
+.deck-tools > span { margin-right: 4px; } .deck-tools small { display: block; font-size: 10px; opacity: 0.7; }
+.deck-tools .btn { padding: 5px 9px; font-size: 11px; }
 .dev-panel[hidden] { display: none; }
 .dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px 14px; }
 .dev-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--text-muted, #9aa); }
@@ -664,6 +670,9 @@ header h1 span {
       </button>
       <button class="btn" id="clear-chat-btn">
         <span>x</span> Clear
+      </button>
+      <button class="btn" id="export-chat-btn" title="Download this conversation with its full provenance stamp">
+        <span>⤓</span> Export
       </button>
     </div>
   </header>
@@ -730,6 +739,14 @@ header h1 span {
           </div>
         </div>
         <div class="dev-panel" id="dev-panel" hidden>
+          <div class="deck-tools">
+            <span>Scenario decks <small>pick one in Topic</small></span>
+            <button class="btn" id="deck-save">Save current as deck</button>
+            <button class="btn" id="deck-delete">Delete deck</button>
+            <button class="btn" id="deck-download">⤓ My decks</button>
+            <button class="btn" id="deck-upload">⤒ Load decks</button>
+            <input type="file" id="deck-file" accept=".json" hidden>
+          </div>
           <div class="dev-grid" id="dev-fields"></div>
           <div class="dev-prompt-label">Last prompt sent <span id="dev-prompt-who"></span></div>
           <pre class="dev-prompt" id="dev-prompt">(nothing yet)</pre>
@@ -1292,6 +1309,7 @@ async function loadRWKV7File(file, log) {
   const ab = await file.arrayBuffer();
   await yieldToMain();
   const res = loadRWKV7FromBuffer(ab, file.name);
+  res.fingerprint = await fileFingerprint(ab);
   const r = res.report, c = res.cfg;
   log(`RWKV-7 x070: ${(res.nParams / 1e6).toFixed(1)}M params, dim ${c.dim}, ${c.numLayers} layers, ${c.dim / c.headSize} heads x ${c.headSize}, vocab ${c.vocabSize}`, 'success');
   log(`Tensors: ${r.loaded}/${r.total} loaded` + (r.unused.length ? `, ${r.unused.length} unused (${r.unused.slice(0, 4).join(', ')})` : '') + (r.missing.length ? `, ${r.missing.length} MISSING (${r.missing.slice(0, 4).join(', ')})` : ''), r.unused.length || r.missing.length ? 'warning' : 'success');
@@ -1300,6 +1318,171 @@ async function loadRWKV7File(file, log) {
   return res;
 }
 function uniqueName(name, taken) { let n = name, k = 2; while (taken.some(x => x.name === n)) n = `${name} #${k++}`; return n; }
+
+// ── Dialogue factory: provenance helpers ──
+const APP_ID = 'multi-pip-chat', APP_VERSION = 'factory-4';
+// Model fingerprint: SHA-256 over (size + first 1 MB + last 1 MB). Not a full-file hash (that is too heavy
+// for a phone on multi-GB checkpoints), but enough to tell two different model files apart.
+async function fileFingerprint(ab) {
+  try {
+    const u8 = new Uint8Array(ab), MB = 1 << 20;
+    const head = u8.subarray(0, Math.min(MB, u8.length)), tail = u8.subarray(Math.max(0, u8.length - MB));
+    const sizeBytes = new TextEncoder().encode(String(u8.length) + ':');
+    const buf = new Uint8Array(sizeBytes.length + head.length + tail.length);
+    buf.set(sizeBytes, 0); buf.set(head, sizeBytes.length); buf.set(tail, sizeBytes.length + head.length);
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return 'sha256-headtail:' + Array.from(new Uint8Array(h), b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return 'unavailable'; }
+}
+// Seeded sampler. Same seed + same model + same settings + no interruptions = the same conversation
+// (on the same browser). Blank seed = a fresh random one each run, still written into the export.
+let _rng = Math.random;
+function seedRng(seedStr) {
+  let h = 1779033703 ^ seedStr.length;
+  for (let i = 0; i < seedStr.length; i++) { h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  let a = h >>> 0;
+  _rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
+                 t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// Friendlier placeholder names (files arrive called things like "Converted"). Still just placeholders:
+// you're asked to name every Pip before a chat starts, because labels summon what they sit next to.
+const FRIENDLY_NAMES = ['Wren', 'Moss', 'Clover', 'Pebble', 'Juniper', 'Sorrel', 'Fern', 'Bramble', 'Tansy', 'Rook'];
+function friendlyName(taken) { return FRIENDLY_NAMES.find(n => !taken.some(p => p.name === n)) || uniqueName('Pip', taken); }
+// ── Dialogue filter (filter-1): flags lines for a human to look at. It never deletes or edits anything. ──
+// Each flag is a reason to look, not a verdict: "stab" in "taking a stab at it" gets flagged too, on purpose.
+const FILTER_VERSION = 'filter-1';
+const HEAVY_THEMES = {
+  violence: ['kill', 'killed', 'killing', 'murder', 'murdered', 'stab', 'stabbed', 'shot', 'shoot', 'shooting', 'gun', 'guns',
+             'knife', 'beat', 'beaten', 'kicked', 'punched', 'torture', 'tortured', 'blood', 'bleeding', 'attack', 'attacked', 'assault'],
+  abuse:    ['abuse', 'abused', 'abusive', 'molest', 'molested', 'rape', 'raped', 'grooming'],
+  selfharm: ['suicide', 'suicidal', 'self-harm', 'overdose'],
+  crime:    ['jail', 'prison', 'arrested', 'police', 'cops', 'criminal'],
+  drugs:    ['cocaine', 'heroin', 'meth', 'drugs', 'overdosed'],
+  sexual:   ['sex', 'sexual', 'naked', 'porn', 'nude'],
+  death:    ['dead', 'died', 'death', 'funeral', 'corpse'],
+};
+const GOODBYE_RE = /\b(good ?bye|bye|see (?:you|ya)|take care|good ?night|farewell|talk (?:to you )?later|gotta go|catch you later)\b/i;
+const NONLATIN_RE = /[Ѐ-ӿ֐-ۿऀ-ॿ぀-ヿ㐀-鿿가-힯]/;
+const EMOJI_RE = /\p{Extended_Pictographic}|️|‍/gu;
+
+function filterDialogue(dialogue, names = []) {
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const who = ['User', 'System', 'Assistant', 'Human', 'AI', ...names].map(esc).join('|');
+  const slipRe = new RegExp(`(^|[\\s"“(])(${who})\\s*(\\([^)]*\\))?:`, 'i');
+  const tagRe = /["”]\s*,?\s*(says|said|asks|asked|replies|replied|whispers|whispered|shouts|shouted)\b/i;
+  const words = t => (t.toLowerCase().match(/[a-z'’-]+/g) || []);
+  const grams = (ws, n) => { const g = []; for (let i = 0; i + n <= ws.length; i++) g.push(ws.slice(i, i + n).join(' ')); return g; };
+  const jacc = (a, b) => { const A = new Set(a), B = new Set(b); if (!A.size || !B.size) return 0;
+    let inter = 0; for (const x of A) if (B.has(x)) inter++; return inter / (A.size + B.size - inter); };
+  const norm = t => t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const lines = dialogue.map(d => ({ ...d, flags: [] }));
+  const add = (l, type, detail) => l.flags.push(detail ? { type, detail } : { type });
+  const pips = lines.filter(l => l.role === 'pip');
+
+  pips.forEach((l, idx) => {
+    const t = l.text || '', ws = words(t);
+    if (!t.trim()) { add(l, 'empty'); return; }
+    if (l.gen && l.gen.endedBy === 'cap') add(l, 'hit-cap', `${l.gen.tokens} tokens`);
+    else if (!l.gen && ws.length >= 15 && !/[.!?…"”)\]]\s*$/.test(t)) add(l, 'maybe-cut', 'no token count in this export; ends mid-sentence');
+    const slip = t.match(slipRe); if (slip) add(l, 'speaker-slip', slip[0].trim());
+    if (tagRe.test(t)) add(l, 'dialogue-tag');
+    if (/^\s*["“]/.test(t) && /["”]/.test(t.trim().slice(1))) add(l, 'quote-opener');
+    const h = t.match(/(^|\s)@[A-Za-z0-9_]{2,}/); if (h) add(l, 'handle', h[0].trim());
+    if (/https?:\/\/|www\.|\]\(|!\[|\b[a-z0-9-]+\.(com|org|net|io)\b/i.test(t)) add(l, 'url-or-markup');
+    if (NONLATIN_RE.test(t)) add(l, 'script-switch');
+    const bare = t.replace(EMOJI_RE, '');
+    const ok = (bare.match(/[A-Za-z0-9\s.,!?'’"“”…:;()\-–—]/g) || []).length;
+    if (bare.length >= 12 && ok / bare.length < 0.85) add(l, 'garble');
+    // repetition: inside the line, against recent lines, against this speaker's own recent lines
+    const tri = grams(ws, 3), seen = {};
+    for (const g of tri) seen[g] = (seen[g] || 0) + 1;
+    const stut = Object.entries(seen).find(([, c]) => c >= 3); if (stut) add(l, 'stutter', stut[0]);
+    const recent = pips.slice(Math.max(0, idx - 8), idx);
+    if (norm(t).length > 3 && recent.some(r => norm(r.text) === norm(t))) add(l, 'repeat');
+    else {
+      const own = recent.filter(r => r.speaker === l.speaker).slice(-3);
+      const best = Math.max(0, ...own.map(r => jacc(tri, grams(words(r.text), 3))));
+      if (tri.length >= 3 && best >= 0.5) add(l, 'near-repeat', best.toFixed(2));
+    }
+    // heavy themes (flag for review; idioms included on purpose)
+    const hits = [];
+    for (const [cat, list] of Object.entries(HEAVY_THEMES))
+      for (const w of list) if (new RegExp(`\\b${esc(w)}\\b`, 'i').test(t)) { hits.push(`${cat}:${w}`); break; }
+    if (hits.length) add(l, 'heavy-theme', hits.join(', '));
+  });
+  // runs across lines: goodbye spirals and fragment runs
+  pips.forEach((l, i) => {
+    const win = pips.slice(Math.max(0, i - 3), i + 1);
+    if (GOODBYE_RE.test(l.text) && win.filter(x => GOODBYE_RE.test(x.text)).length >= 3)
+      for (const x of win) if (GOODBYE_RE.test(x.text) && !x.flags.some(f => f.type === 'goodbye-spiral')) add(x, 'goodbye-spiral');
+  });
+  // fragment: a line of 4 words or fewer, or a short line trailing off ("Look…", "Well…wait a minute…")
+  const isFrag = t => { const n = words(t).length; return n <= 4 || (n <= 8 && /(…|\.\.\.)\s*$/.test(t)); };
+  for (let i = 0; i < pips.length; ) {
+    let j = i; while (j < pips.length && isFrag(pips[j].text)) j++;
+    if (j - i >= 3) for (let k = i; k < j; k++) add(pips[k], 'fragment-run', `${j - i} in a row`);
+    i = Math.max(j, i + 1);
+  }
+  const counts = {};
+  for (const l of lines) for (const f of l.flags) counts[f.type] = (counts[f.type] || 0) + 1;
+  const flagged = lines.filter(l => l.flags.length).length;
+  return {
+    lines,
+    filter: { version: FILTER_VERSION, verdict: flagged ? 'review' : 'clean', flaggedLines: flagged, totalLines: pips.length,
+              counts, note: 'Flags mark lines for a human to look at. Nothing was deleted or changed.',
+              themes: Object.keys(HEAVY_THEMES) }
+  };
+}
+if (typeof module !== 'undefined') module.exports = { filterDialogue, FILTER_VERSION };
+
+// ── Scenario decks: a saved cast (names + notes), an opening line, and optionally settings. ──
+// Pick one from the Topic menu; it renames the loaded Pips in order, gives them their notes, and opens the
+// chat with its line. Behavior words in the notes ("asks small questions") steer better than category words.
+const BUILTIN_DECKS = [
+  { id: 'frog-pond', name: 'Frog pond', builtIn: true,
+    pips: [{ name: 'Wren', note: 'Curious and gentle. Notices small animals and asks small questions.' },
+           { name: 'Moss', note: 'Slow and patient. Likes to explain how things in nature work.' }],
+    opener: { speaker: 'Wren', text: 'Did you hear the frogs singing last night?' } },
+  { id: 'workshop', name: 'Workshop disagreement', builtIn: true,
+    pips: [{ name: 'Juniper', note: 'Practical. Likes to try a fix first and see what happens.' },
+           { name: 'Sorrel', note: 'Careful. Likes to measure twice and plan before cutting.' }],
+    opener: { speaker: 'Juniper', text: 'The chair leg snapped again. I say we just glue it and clamp it tonight.' } },
+  { id: 'kitchen', name: 'Kitchen lesson', builtIn: true,
+    pips: [{ name: 'Clover', note: 'Knows how to cook. Explains one step at a time and checks in.' },
+           { name: 'Pebble', note: 'New to cooking. Asks lots of questions and admits mistakes.' }],
+    opener: { speaker: 'Pebble', text: 'Okay, I want to make bread for the first time. Where do I even start?' } },
+  { id: 'cancelled-plans', name: 'Cancelled plans, gently', builtIn: true,
+    pips: [{ name: 'Fern', note: 'Kind and direct. Has to deliver disappointing news and wants to do it well.' },
+           { name: 'Rook', note: 'Was really looking forward to Saturday. Honest about feelings, not cruel.' }],
+    opener: { speaker: 'Fern', text: 'Hey, I have to tell you something about Saturday, and I feel bad about it.' } },
+  { id: 'lost-key', name: 'Lost key', builtIn: true,
+    pips: [{ name: 'Tansy', note: 'Retraces steps out loud. Methodical.' },
+           { name: 'Bramble', note: 'Jumps to guesses. Funny, a little scattered.' },
+           { name: 'Wren', note: 'Quiet. Notices details the others miss.' }],
+    opener: { speaker: 'Tansy', text: 'Has anyone seen the shed key? I had it this morning.' } },
+  { id: 'open-room', name: 'Open room (the seed-420 book club setup)', builtIn: true,
+    pips: [{ name: 'Wren', note: '' }, { name: 'Moss', note: '' }, { name: 'Clover', note: '' }, { name: 'Pebble', note: '' }],
+    opener: null, userName: 'no one else',
+    settings: { temperature: 1, maxTokens: 120, turns: 40, seed: '420', stateful: true } },
+];
+function loadUserDecks() { try { return JSON.parse(localStorage.getItem('mpc-decks') || '[]'); } catch (e) { return []; } }
+function saveUserDecks(d) { try { localStorage.setItem('mpc-decks', JSON.stringify(d)); return true; } catch (e) { return false; } }
+let USER_DECKS = loadUserDecks();
+const allDecks = () => [...BUILTIN_DECKS, ...USER_DECKS];
+const findDeck = id => allDecks().find(d => d.id === id);
+function deckSlug(name) { return 'u-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + Date.now().toString(36); }
+function renderDeckMenu() {
+  const sel = document.getElementById('chat-topic'); if (!sel) return;
+  const keep = sel.value;
+  sel.querySelectorAll('optgroup[data-decks]').forEach(g => g.remove());
+  const g = document.createElement('optgroup'); g.label = 'Scenario decks'; g.dataset.decks = '1';
+  for (const d of allDecks()) { const o = document.createElement('option'); o.value = 'deck:' + d.id; o.textContent = d.name + (d.builtIn ? '' : ' ★'); g.appendChild(o); }
+  sel.appendChild(g);
+  if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+
+function escapeHtml(t) { return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
 
 // ── Developer console (shared with Pip's Room): every knob for the voice, and the exact last prompt ──
@@ -1321,12 +1504,14 @@ function buildDevPanel(boxId, DEV, fields, onChange) {
 }
 
 const DEV = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996, maxTokens: 60,
-              contextMessages: 5, systemPrompt: true, userName: '', lastPrompt: '', lastWho: '' };
+              contextMessages: 5, systemPrompt: true, userName: '', seed: '', stateful: true, lastPrompt: '', lastWho: '' };
 const DEV_FIELDS = [
   ['temperature', 'Temperature', 0.05, 2, 0.05], ['topP', 'Top-P', 0.05, 1, 0.05], ['topK', 'Top-K', 0, 500, 1, '0 = off'],
   ['presence', 'Presence', 0, 2, 0.1, 'anti-repeat'], ['frequency', 'Frequency', 0, 2, 0.1, 'anti-repeat'], ['decay', 'Penalty decay', 0.9, 1, 0.001],
   ['maxTokens', 'Max tokens', 10, 300, 10], ['contextMessages', 'Context lines', 1, 20, 1, 'lines each Pip sees'],
   ['systemPrompt', 'System prompt', 'bool'], ['userName', 'Your name', 'text', 'User'],
+  ['seed', 'Seed', 'text', 'blank = random', 0, 'same seed + settings = same chat'],
+  ['stateful', 'Stateful', 'bool', 0, 0, 'each Pip keeps its own memory of the whole chat (Context lines then unused)'],
 ];
 function syncQuickControls(key) {   // the quick Temperature / Anti-repeat boxes and the console stay in step
   if (key === 'temperature') document.getElementById('chat-temp').value = DEV.temperature;
@@ -1709,7 +1894,7 @@ function sampleLogits(logits, temp, topP, topK = 0) {
     for(let i=0; i<logits.length; i++) probs[i] = filtered[i] / (newSum || 1);
   }
 
-  const r = Math.random();
+  const r = _rng();
   let acc = 0;
   for(let i=0; i<logits.length; i++) {
     if(probs[i] > 0) {
@@ -1806,6 +1991,45 @@ const ChatRoom = {
     story: 'Let\'s collaboratively tell a story together.'
   },
   
+  deck: null,          // { ...deck, modified } once a deck is applied
+  turnOffset: 0,       // who speaks first after an opener line
+
+  applyDeck(id) {
+    const d = findDeck(id); if (!d) return;
+    if (!this.pips.length) { log('Load Pips first, then pick a deck', 'warning'); showToast('Load Pips first', 'error'); return; }
+    if (this.isRunning) { log('Stop the chat before switching decks', 'warning'); return; }
+    const n = Math.min(this.pips.length, d.pips.length);
+    for (let i = 0; i < n; i++) {
+      const p = this.pips[i], v = d.pips[i];
+      p.name = uniqueName(v.name, this.pips.filter(x => x !== p)); p.about = v.note || ''; p.named = true;
+    }
+    if (d.pips.length > this.pips.length) log(`Deck "${d.name}" has ${d.pips.length} voices; you loaded ${this.pips.length}, so the last ${d.pips.length - this.pips.length} sit out`, 'warning');
+    if (this.pips.length > d.pips.length) log(`Deck "${d.name}" has ${d.pips.length} voices; Pips ${d.pips.length + 1}+ keep their own names and notes`, 'warning');
+    if (d.userName !== undefined) DEV.userName = d.userName;
+    const st = d.settings || {};
+    if (st.temperature !== undefined) { DEV.temperature = st.temperature; document.getElementById('chat-temp').value = st.temperature; }
+    if (st.maxTokens !== undefined) DEV.maxTokens = st.maxTokens;
+    if (st.turns !== undefined) document.getElementById('chat-turns').value = st.turns;
+    if (st.seed !== undefined) DEV.seed = st.seed;
+    if (st.stateful !== undefined) DEV.stateful = st.stateful;
+    this.resetLive();
+    this.deck = { ...JSON.parse(JSON.stringify(d)), modified: false };
+    this.renderPipList();
+    if (!document.getElementById('dev-panel').hidden) buildDevPanel('dev-fields', DEV, DEV_FIELDS, syncQuickControls);
+    log(`Deck "${d.name}" applied` + (d.opener ? `: ${d.opener.speaker || DEV.userName || 'User'} opens` : ''), 'success');
+  },
+  markDeckModified() { if (this.deck && !this.deck.modified) { this.deck.modified = true; log(`Deck "${this.deck.name}" changed by hand (recorded as modified)`, 'info'); } },
+  currentDeckFromRoom(name) {
+    const first = this.conversationHistory.find(m => m.kind === 'opener' || m.kind === 'topic');
+    return { id: deckSlug(name), name, builtIn: false,
+      pips: this.pips.map(p => ({ name: p.name, note: p.about || '' })),
+      opener: this.deck && this.deck.opener ? this.deck.opener
+            : first ? { speaker: first.kind === 'opener' ? first.sender : '', text: first.text } : null,
+      userName: DEV.userName,
+      settings: { temperature: DEV.temperature, maxTokens: DEV.maxTokens, turns: parseInt(document.getElementById('chat-turns').value) || 10,
+                  seed: DEV.seed || '', stateful: DEV.stateful } };
+  },
+
   addPip(pip) {
     this.pips.push(pip);
     this.renderPipList();
@@ -1848,7 +2072,7 @@ const ChatRoom = {
         item.innerHTML = `
           <div class="pip-avatar" style="background: ${COLORS[idx % COLORS.length]}">${pip.name[0].toUpperCase()}</div>
           <div class="pip-info">
-            <div class="pip-name" title="Tap to rename" style="cursor:text">${pip.name}</div>
+            <div class="pip-name" title="Tap to rename" style="cursor:text">${escapeHtml(pip.name)}</div>
             <div class="pip-meta">${pip.version.toUpperCase()} | ${pip.params}</div>
           </div>
           <button class="pip-note" title="What should ${pip.name} know about themselves?">✎</button>
@@ -1858,7 +2082,7 @@ const ChatRoom = {
           e.stopPropagation();
           const v = (window.prompt('Rename this Pip:', pip.name) || '').trim();
           if (v && v !== pip.name) {
-            const old = pip.name; pip.name = uniqueName(v, this.pips.filter(x => x !== pip));
+            const old = pip.name; pip.name = uniqueName(v, this.pips.filter(x => x !== pip)); pip.named = true; this.markDeckModified();
             this.conversationHistory.forEach(m => { if (m.sender === old) m.sender = pip.name; });
             log(`${old} is now ${pip.name}`, 'info'); this.renderPipList();
           }
@@ -1866,7 +2090,7 @@ const ChatRoom = {
         item.querySelector('.pip-note').addEventListener('click', (e) => {
           e.stopPropagation();
           const v = window.prompt(`A note for ${pip.name} (added to their system prompt). Empty = none.`, pip.about || '');
-          if (v !== null) { pip.about = v.trim(); log(`${pip.name}'s note ${pip.about ? 'updated' : 'cleared'}`, 'info'); }
+          if (v !== null) { pip.about = v.trim(); this.markDeckModified(); log(`${pip.name}'s note ${pip.about ? 'updated' : 'cleared'}`, 'info'); }
         });
         item.querySelector('.pip-remove').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1879,30 +2103,34 @@ const ChatRoom = {
     document.getElementById('pip-count').textContent = this.pips.length;
   },
   
-  addMessage(text, sender, senderIdx = -1) {
+  addMessage(text, sender, senderIdx = -1, kind = null) {
     const area = document.getElementById('chat-area');
     const msg = document.createElement('div');
+    kind = kind || (sender === 'system' ? 'system' : sender === 'You' ? 'human' : 'pip');
     
-    if (sender === 'system') {
+    if (kind === 'system' || kind === 'topic') {
       msg.className = 'message system';
-      msg.textContent = text;
+      msg.textContent = kind === 'topic' ? `Topic (said to the room as ${DEV.userName || 'User'}): ${text}` : text;
     } else {
       const color = senderIdx >= 0 ? COLORS[senderIdx % COLORS.length] : '#666';
       msg.className = `message pip-${senderIdx % 5}`;
       msg.innerHTML = `
         <div class="message-header">
           <div class="message-avatar" style="background: ${color}">${sender[0].toUpperCase()}</div>
-          <span class="message-sender">${sender}</span>
+          <span class="message-sender">${escapeHtml(sender)}</span>${kind === 'opener' ? '<span class="msg-flag" style="border-color:var(--text-muted);color:var(--text-muted)">opener (scripted)</span>' : ''}
           <span class="message-time">${new Date().toLocaleTimeString()}</span>
         </div>
-        <div class="message-body">${text}</div>
+        <div class="message-body">${escapeHtml(text)}</div>
       `;
     }
     
     area.appendChild(msg);
     area.scrollTop = area.scrollHeight;
     
-    this.conversationHistory.push({ sender, text, time: Date.now() });
+    this.conversationHistory.push({ sender, text, time: Date.now(), kind, el: msg,
+      settings: kind === 'pip' ? { temperature: DEV.temperature, presence: DEV.presence, frequency: DEV.frequency,
+                                   mode: DEV.stateful ? 'stateful' : 'stateless' } : undefined });
+    this.exported = false;
   },
   
   showTyping(pipName) {
@@ -1920,12 +2148,50 @@ const ChatRoom = {
     if (indicator) indicator.remove();
   },
   
+  // Stateful mode (RWKV-7 only): each Pip keeps one living state for the whole chat. On its turn it reads
+  // only the lines it hasn't heard yet (everyone's, its own included, in the same "Name: text" form the
+  // stateless prompt uses), then speaks. The state it keeps is the one from *before* "Name:" — its own line
+  // is read back in canonical form next turn — so what it remembers is exactly what's on screen.
+  // forward() never mutates the state it's given, so holding a reference is a free snapshot.
+  statefulPrompt(pip) {
+    if (!pip.live) {
+      pip.live = { state: pip.model.getEmptyState(), res: null, fed: 0, tokens: 0, warned: false };
+      pip.live.pending = DEV.systemPrompt ? pipSystemBlock(pip, this.pips.filter(p => p !== pip)) : '';
+    }
+    let text = pip.live.pending || ''; pip.live.pending = '';
+    for (const m of this.conversationHistory.slice(pip.live.fed)) {
+      if (m.kind === 'system') continue;
+      const name = (m.kind === 'human' || m.kind === 'topic') ? (DEV.userName || 'User') : m.sender;
+      text += `${name}: ${m.text}\n`;
+    }
+    pip.live.fed = this.conversationHistory.length;
+    return text;
+  },
+  resetLive() { for (const p of this.pips) p.live = null; },
+
   async generateResponse(pip, context) {
-    const ids = pip.tokenizer.encode(context);
-    if (!ids.length) return '';
     const real = pip.kind === 'rwkv7';
+    const live = real && DEV.stateful;
+    let state, res = null, ids;
+    if (live) {
+      const fresh = this.statefulPrompt(pip);
+      const newIds = pip.tokenizer.encode(fresh);
+      state = pip.live.state; res = pip.live.res;
+      for (const id of newIds) { res = pip.model.forward(id, state); state = res.state; await yieldToMain(); }
+      pip.live.state = state; pip.live.res = res; pip.live.tokens += newIds.length;
+      if (pip.live.tokens > 8000 && !pip.live.warned) {
+        pip.live.warned = true;
+        log(`${pip.name}'s state is past 8k tokens: small RWKV-7 models may start to lose the thread`, 'warning');
+      }
+      DEV.lastPrompt = `(stateful: ${pip.name} has heard ${pip.live.tokens} tokens; new this turn)\n` + fresh + `${pip.name}:`;
+      refreshDevPrompt();
+      ids = pip.tokenizer.encode(`${pip.name}:`);
+    } else {
+      ids = pip.tokenizer.encode(context);
+      state = pip.model.getEmptyState();
+    }
+    if (!ids.length) return '';
     // Feed EVERY context token (the old loop skipped the last one and fed the first twice), then sample.
-    let state = pip.model.getEmptyState(), res = null;
     for (let i = 0; i < ids.length; i++) {
       res = pip.model.forward(ids[i], state); state = res.state;
       if (real) await yieldToMain();
@@ -1940,6 +2206,7 @@ const ChatRoom = {
       for (const m of this.conversationHistory.slice(-8))
         if (m.sender === pip.name) for (const id of pip.tokenizer.encode(m.text)) rep.add(id);
     }
+    let endedBy = 'cap';
     for (let i = 0; i < maxTokens; i++) {
       const logits = rep ? rep.apply(res.logits) : res.logits;
       let next = sampleLogits(logits, DEV.temperature, DEV.topP, DEV.topK);
@@ -1948,14 +2215,15 @@ const ChatRoom = {
       if (real && !pip.tokenizer.decode(gen).trim())
         for (let k = 0; k < 8 && (next === 0 || pip.tokenizer.decode([next]).includes('\n')); k++)
           next = sampleLogits(logits, DEV.temperature, DEV.topP, DEV.topK);
-      if (real && next === 0) break;                               // RWKV World token 0 = end of text
+      if (real && next === 0) { endedBy = 'eos'; break; }          // RWKV World token 0 = end of text
       gen.push(next);
       if (rep) { rep.step(); rep.add(next); }
-      if (real && pip.tokenizer.decode(gen).includes('\n')) break; // real models: one chat line per turn
+      if (real && pip.tokenizer.decode(gen).includes('\n')) { endedBy = 'newline'; break; } // one chat line per turn
       res = pip.model.forward(next, state); state = res.state;
       await yieldToMain();
     }
     const text = pip.tokenizer.decode(gen);
+    pip._lastGen = { tokens: gen.length, endedBy, maxTokens };
     return (real ? text.split('\n')[0] : text).trim();
   },
   
@@ -1963,13 +2231,11 @@ const ChatRoom = {
     const recent = this.conversationHistory.slice(-recentMessages);
     let context = pip.kind === 'rwkv7' && DEV.systemPrompt ? pipSystemBlock(pip, this.pips.filter(p => p !== pip)) : '';
     
-    if (this.topic !== 'free' && this.conversationHistory.length === 0) {
-      context = this.topics[this.topic] + '\n\n';
-    }
-    
     recent.forEach(m => {
-      if (m.sender === 'system') return;
-      const name = m.sender === 'You' ? (DEV.userName || 'User') : m.sender;
+      if (m.kind === 'system') return;
+      // The topic is spoken into the room as the first chat line, so it sits in the chat format itself
+      // (the layer the models hold hardest) instead of a display-only banner the models never saw.
+      const name = (m.kind === 'human' || m.kind === 'topic') ? (DEV.userName || 'User') : m.sender;
       context += `${name}: ${m.text}\n`;
     });
     
@@ -1983,6 +2249,16 @@ const ChatRoom = {
       log('Need at least 2 pips to start chat', 'error');
       return;
     }
+    // Every Pip gets a name you chose before a chat starts: a placeholder name steers the voice too.
+    for (const pip of this.pips) {
+      if (pip.named) continue;
+      const v = window.prompt(`Name this Pip before the chat starts (loaded from ${pip.fileName}):`, pip.name);
+      if (v === null) { log('Start cancelled: every Pip needs a name first', 'warning'); return; }
+      const nm = v.trim() || pip.name;
+      if (nm !== pip.name) pip.name = uniqueName(nm, this.pips.filter(x => x !== pip));
+      pip.named = true;
+    }
+    this.renderPipList();
     
     this.isRunning = true;
     this.isPaused = false;
@@ -1992,6 +2268,20 @@ const ChatRoom = {
     this.temp = parseFloat(document.getElementById('chat-temp').value) || 0.85;
     DEV.temperature = this.temp;
     this.topic = document.getElementById('chat-topic').value;
+    const fresh = this.conversationHistory.length === 0;
+    if (fresh) {
+      const seed = (DEV.seed || '').trim() || String(Math.floor(Math.random() * 1e9));
+      seedRng(seed);
+      this.run = { id: 'run-' + Date.now().toString(36), seed, seedWasChosen: !!(DEV.seed || '').trim(),
+                   startedAt: new Date().toISOString(), segments: [], endReason: null };
+    } else if (!this.run) {
+      this.run = { id: 'run-' + Date.now().toString(36), seed: null, seedWasChosen: false, startedAt: new Date().toISOString(),
+                   segments: [], endReason: null, note: 'started on top of an existing conversation' };
+    }
+    if (fresh) this.turnOffset = 0;
+    this.run.segments.push({ at: new Date().toISOString(), maxTurns: this.maxTurns, topic: this.topic,
+      deck: this.deck ? { id: this.deck.id, name: this.deck.name, modified: this.deck.modified } : null,
+      settings: this.settingsSnapshot(), pips: this.pips.map(p => this.pipRecord(p)) });
     
     document.getElementById('upload-zone').classList.add('hidden');
     document.getElementById('chat-area').classList.remove('hidden');
@@ -2003,8 +2293,15 @@ const ChatRoom = {
     this.updateStatus();
     log('Chat started!', 'success');
     
-    if (this.topic !== 'free') {
-      this.addMessage(`Topic: ${this.topics[this.topic]}`, 'system');
+    if (fresh && this.topic.startsWith('deck:')) {
+      const op = this.deck && this.deck.opener;
+      if (op && op.text) {
+        const idx = this.pips.findIndex(p => p.name === op.speaker);
+        if (idx >= 0) { this.addMessage(op.text, this.pips[idx].name, idx, 'opener'); this.turnOffset = idx + 1; }
+        else this.addMessage(op.text, 'Topic', -1, 'topic');      // spoken by you (or a voice not in the room)
+      }
+    } else if (this.topic !== 'free' && fresh) {
+      this.addMessage(this.topics[this.topic], 'Topic', -1, 'topic');
     }
     
     this.runChatLoop();
@@ -2012,15 +2309,16 @@ const ChatRoom = {
   
   async runChatLoop() {
     while (this.isRunning && this.currentTurn < this.maxTurns && !this.isPaused) {
-      const pip = this.pips[this.currentTurn % this.pips.length];
+      const pip = this.pips[(this.currentTurn + this.turnOffset) % this.pips.length];
       
       this.showTyping(pip.name);
       
-      const context = this.buildContext(pip);
+      const context = pip.kind === 'rwkv7' && DEV.stateful ? '' : this.buildContext(pip);
       const response = await this.generateResponse(pip, context);
       
       this.hideTyping();
       this.addMessage(response, pip.name, this.pips.indexOf(pip));
+      this.conversationHistory.at(-1).gen = pip._lastGen; this.refreshFlags();
       
       this.currentTurn++;
       
@@ -2029,6 +2327,7 @@ const ChatRoom = {
     
     if (this.currentTurn >= this.maxTurns) {
       this.addMessage('Conversation complete.', 'system');
+      if (this.run) this.run.endReason = 'complete';
       this.stop();
     }
   },
@@ -2044,6 +2343,8 @@ const ChatRoom = {
   },
   
   stop() {
+    if (this.run && this.isRunning && !this.run.endReason) this.run.endReason = 'stopped';
+    if (this.run) this.run.endedAt = new Date().toISOString();
     this.isRunning = false;
     this.isPaused = false;
     document.getElementById('start-chat-btn').disabled = false;
@@ -2054,7 +2355,12 @@ const ChatRoom = {
   },
   
   clear() {
+    if (!this.exported && this.conversationHistory.some(m => m.kind === 'pip') &&
+        !window.confirm('This conversation hasn\'t been exported yet. Clear it anyway?')) return;
     this.stop();
+    this.run = null;
+    this.turnOffset = 0;
+    this.resetLive();
     this.conversationHistory = [];
     this.currentTurn = 0;
     document.getElementById('chat-area').innerHTML = '';
@@ -2064,20 +2370,88 @@ const ChatRoom = {
   },
   
   async userMessage(text) {
-    this.addMessage(text, 'You', -1);
+    this.addMessage(text, 'You', -1, 'human');
+    if (this.run) this.run.interrupted = true;
     
     if (this.isRunning && !this.isPaused) {
+      if (this.run) this.run.endReason = 'interrupted';
       this.stop();
     }
     
     const pip = this.pips[0];
     if (pip) {
       this.showTyping(pip.name);
-      const context = this.buildContext(pip);
-      const response = await this.generateResponse(pip, context + `User: ${text}\n${pip.name}:`);
+      const context = pip.kind === 'rwkv7' && DEV.stateful ? '' : this.buildContext(pip);   // stateless: ends with your line and "<Pip>:"
+      const response = await this.generateResponse(pip, context);
       this.hideTyping();
       this.addMessage(response, pip.name, 0);
+      this.conversationHistory.at(-1).gen = pip._lastGen; this.refreshFlags();
     }
+  },
+  
+  // Live flags: re-run the filter over the chat so far and badge each line (runs like fragment streaks
+  // and goodbye spirals can only be seen after the fact, so earlier lines can gain badges later).
+  refreshFlags() {
+    const msgs = this.conversationHistory.filter(m => m.kind !== 'system');
+    const dlg = msgs.map((m, i) => ({ turn: i + 1, speaker: m.sender, role: m.kind, text: m.text, gen: m.gen }));
+    let res; try { res = filterDialogue(dlg, this.pips.map(p => p.name)); } catch (e) { return; }
+    res.lines.forEach((l, i) => {
+      const el = msgs[i].el && msgs[i].el.querySelector('.message-header'); if (!el) return;
+      let box = el.querySelector('.msg-flags'); if (!l.flags.length) { if (box) box.remove(); return; }
+      if (!box) { box = document.createElement('span'); box.className = 'msg-flags'; el.querySelector('.message-sender').after(box); }
+      box.innerHTML = l.flags.map(f => `<span class="msg-flag" title="${escapeHtml(f.detail || '')}">${escapeHtml(f.type)}</span>`).join('');
+    });
+  },
+  settingsSnapshot() {
+    return { temperature: DEV.temperature, topP: DEV.topP, topK: DEV.topK, presence: DEV.presence, frequency: DEV.frequency,
+             penaltyDecay: DEV.decay, maxTokens: DEV.maxTokens, contextLines: DEV.contextMessages,
+             systemPrompt: DEV.systemPrompt, userName: DEV.userName || 'User', delayMs: this.delay,
+             mode: DEV.stateful ? 'stateful' : 'stateless' };
+  },
+  pipRecord(p) {
+    return { name: p.name, modelFile: p.fileName, modelKind: p.kind || 'pip', version: p.version, params: p.params,
+             fingerprint: p.fingerprint || 'unavailable', note: p.about || '',
+             stateTokens: p.live ? p.live.tokens : null,
+             systemBlock: p.kind === 'rwkv7' && DEV.systemPrompt ? pipSystemBlock(p, this.pips.filter(o => o !== p)).trim() : '' };
+  },
+  buildExport() {
+    const msgs = this.conversationHistory.filter(m => m.kind !== 'system');
+    const run = this.run || { id: 'run-' + Date.now().toString(36), seed: null, segments: [], note: 'no run record (chat never started)' };
+    const first = run.segments[0] && run.segments[0].settings;
+    const changed = first ? msgs.some(m => m.settings && (m.settings.temperature !== first.temperature || m.settings.presence !== first.presence ||
+                                                          (m.settings.mode && m.settings.mode !== first.mode))) : false;
+    let turn = 0;
+    return {
+      format: 'consciousnode.dialogue/1', app: APP_ID, appVersion: APP_VERSION,
+      exportedAt: new Date().toISOString(),
+      run: { id: run.id, seed: run.seed, seedWasChosen: !!run.seedWasChosen, startedAt: run.startedAt || null,
+             endedAt: run.endedAt || null, endReason: run.endReason || (this.isRunning ? 'running' : 'unknown'),
+             interrupted: !!run.interrupted, settingsChangedMidRun: changed, segments: run.segments, note: run.note || undefined },
+      topic: { key: this.topic, text: this.topic.startsWith('deck:') ? (this.deck && this.deck.opener ? this.deck.opener.text : '') : (this.topics[this.topic] || '') },
+      deck: this.deck ? JSON.parse(JSON.stringify(this.deck)) : null,
+      pips: this.pips.map(p => this.pipRecord(p)),
+      ...(() => {
+        const dialogue = msgs.map(m => ({ turn: ++turn, speaker: m.kind === 'human' || m.kind === 'topic' ? (DEV.userName || 'User') : m.sender,
+                                          role: m.kind, text: m.text, time: new Date(m.time).toISOString(), settings: m.settings, gen: m.gen }));
+        // Flags only: they mark lines for a human to look at. Nothing is ever deleted or changed.
+        const f = filterDialogue(dialogue, this.pips.map(p => p.name));
+        return { dialogue: f.lines, filter: f.filter };
+      })()
+    };
+  },
+  exportRun() {
+    if (!this.conversationHistory.some(m => m.kind === 'pip')) { showToast('Nothing to export yet', 'error'); return; }
+    const data = this.buildExport();
+    const stamp = data.exportedAt.replace(/[:]/g, '').replace(/\..*$/, '');
+    const who = this.pips.map(p => p.name).join('-').replace(/[^\w-]+/g, '_').slice(0, 60);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `dialogue_${stamp}_${who}_seed${data.run.seed ?? 'none'}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    this.exported = true;
+    log(`Exported ${data.dialogue.length} lines (seed ${data.run.seed ?? 'none'})`, 'success');
+    showToast('Conversation exported', 'success');
   },
   
   updateStatus() {
@@ -2119,9 +2493,9 @@ function showToast(message, type = 'info') {
 async function loadPipFile(file) {
   if (RWKV7_EXT.test(file.name)) {
     const res = await loadRWKV7File(file, log);
-    const name = uniqueName(file.name.replace(RWKV7_EXT, ''), ChatRoom.pips);
+    const name = friendlyName(ChatRoom.pips);
     const pip = {
-      id: 'pip-' + Date.now(), name, version: 'x070', kind: 'rwkv7',
+      id: 'pip-' + Date.now(), name, version: 'x070', kind: 'rwkv7', named: false, fingerprint: res.fingerprint,
       params: (res.nParams / 1e6).toFixed(1) + 'M',
       cfg: { vocab: res.cfg.vocabSize, dim: res.cfg.dim, layers: res.cfg.numLayers },
       model: res.model, tokenizer: worldTokenizer(), soul: { name, mood: '-' }, fileName: file.name
@@ -2156,10 +2530,13 @@ async function loadPipFile(file) {
         const total = emb + head + (cfg.layers * block);
         
         const soul = data.soul || { name: 'Pip', mood: 'curious' };
+        const fp = await fileFingerprint(new TextEncoder().encode(e.target.result).buffer);
         
         const pip = {
           id: 'pip-' + Date.now(),
-          name: soul.name || 'Pip',
+          name: uniqueName(soul.name || friendlyName(ChatRoom.pips), ChatRoom.pips),
+          named: !!(data.soul && data.soul.name),
+          fingerprint: fp,
           version: version,
           params: (total / 1000000).toFixed(2) + 'M',
           cfg: cfg,
@@ -2242,13 +2619,17 @@ document.getElementById('clear-chat-btn').addEventListener('click', () => {
   ChatRoom.clear();
 });
 
-document.getElementById('auto-chat-btn').addEventListener('click', () => {
+document.getElementById('export-chat-btn').addEventListener('click', () => {
+  ChatRoom.exportRun();
+});
+
+document.getElementById('auto-chat-btn').addEventListener('click', async () => {
   if (ChatRoom.isRunning) {
     ChatRoom.stop();
     document.getElementById('auto-chat-btn').textContent = 'Auto Chat';
   } else {
-    ChatRoom.start();
-    document.getElementById('auto-chat-btn').textContent = 'Stop Chat';
+    await ChatRoom.start();
+    if (ChatRoom.isRunning) document.getElementById('auto-chat-btn').textContent = 'Stop Chat';
   }
 });
 
@@ -2281,6 +2662,49 @@ function refreshDevPrompt() {
 document.getElementById('dev-btn').addEventListener('click', () => {
   const p = document.getElementById('dev-panel'); p.hidden = !p.hidden;
   if (!p.hidden) { buildDevPanel('dev-fields', DEV, DEV_FIELDS, syncQuickControls); refreshDevPrompt(); }
+});
+renderDeckMenu();
+document.getElementById('chat-topic').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v.startsWith('deck:')) ChatRoom.applyDeck(v.slice(5));
+  else if (ChatRoom.deck) { ChatRoom.deck = null; log('Deck cleared: names and notes stay as they are', 'info'); }
+});
+document.getElementById('deck-save').addEventListener('click', () => {
+  if (!ChatRoom.pips.length) { showToast('Load Pips first', 'error'); return; }
+  const name = (window.prompt('Name this deck (it saves the current names, notes, opening line and settings):', ChatRoom.deck ? ChatRoom.deck.name + ' (mine)' : '') || '').trim();
+  if (!name) return;
+  const d = ChatRoom.currentDeckFromRoom(name);
+  USER_DECKS.push(d); const ok = saveUserDecks(USER_DECKS); renderDeckMenu();
+  document.getElementById('chat-topic').value = 'deck:' + d.id; ChatRoom.deck = { ...d, modified: false };
+  showToast(ok ? `Saved deck "${name}"` : `Saved for this session; this browser won't keep it, so download your decks`, ok ? 'success' : 'error');
+});
+document.getElementById('deck-delete').addEventListener('click', () => {
+  const v = document.getElementById('chat-topic').value; const d = v.startsWith('deck:') && findDeck(v.slice(5));
+  if (!d) { showToast('Pick one of your decks in Topic first', 'error'); return; }
+  if (d.builtIn) { showToast('Built-in decks stay; save a copy and change that instead', 'error'); return; }
+  if (!window.confirm(`Delete your deck "${d.name}"?`)) return;
+  USER_DECKS = USER_DECKS.filter(x => x.id !== d.id); saveUserDecks(USER_DECKS); ChatRoom.deck = null;
+  document.getElementById('chat-topic').value = 'free'; renderDeckMenu();
+});
+document.getElementById('deck-download').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ format: 'consciousnode.decks/1', decks: USER_DECKS }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'scenario-decks.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+document.getElementById('deck-upload').addEventListener('click', () => document.getElementById('deck-file').click());
+document.getElementById('deck-file').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const data = JSON.parse(await f.text()); const list = Array.isArray(data) ? data : data.decks;
+    if (!Array.isArray(list)) throw new Error('no decks in that file');
+    let added = 0;
+    for (const d of list) {
+      if (!d || !d.name || !Array.isArray(d.pips)) continue;
+      const clean = { ...d, builtIn: false, id: USER_DECKS.some(x => x.id === d.id) || BUILTIN_DECKS.some(x => x.id === d.id) || !d.id ? deckSlug(d.name) : d.id };
+      USER_DECKS.push(clean); added++;
+    }
+    saveUserDecks(USER_DECKS); renderDeckMenu(); showToast(`Loaded ${added} deck${added === 1 ? '' : 's'}`, 'success');
+  } catch (err) { showToast('Could not read decks: ' + err.message, 'error'); }
 });
 document.getElementById('chat-temp').addEventListener('change', e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) DEV.temperature = v; });
 document.getElementById('chat-rep').addEventListener('change', e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { DEV.presence = v; DEV.frequency = v; } });

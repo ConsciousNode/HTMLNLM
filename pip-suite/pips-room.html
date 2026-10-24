@@ -2594,7 +2594,7 @@ async function handleUserMessage() {
 // ── Settings for the voice (the developer console edits these; saved with the soul) ──
 const DEV_DEFAULTS = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996,
                        maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true, livingMemory: true,
-                       think: false, thinkTokens: 240 };
+                       think: false, thinkTokens: 240, bridgeCount: 3, bridgeChars: 200 };
 App.dev = { ...DEV_DEFAULTS };
 App.userName = '';           // what the resident calls you; empty = "friend" in the prompt, "User" as the label
 App.about = '';              // a free note prepended to every conversation
@@ -2691,6 +2691,8 @@ const DEV_FIELDS = [
   ['maxTokens', 'Max reply tokens', 10, 300, 10, 'Longest reply, in tokens'],
   ['contextTurns', 'Remembered exchanges', 0, 10, 1, 'How many past exchanges go into each prompt'],
   ['thinkTokens', 'Thinking budget', 20, 600, 10, 'Most tokens spent thinking before answering'],
+  ['bridgeCount', 'Bridge: summaries', 0, 10, 1, 'How many summaries from other threads a new thread starts with (0 = none)'],
+  ['bridgeChars', 'Bridge: length', 60, 600, 20, 'Characters kept from each of those summaries'],
 ];
 function buildDevConsole() {
   const box = document.getElementById('dev-fields'); box.innerHTML = '';
@@ -2944,7 +2946,7 @@ function ensureThreads() {
 function crossThreadMemory() {
   const n = App.soul?.name || 'Resident';
   const sums = App.memories.filter(m => m.type === 'consolidation' && threadOf(m) !== App.activeThread && m.shared !== false)
-    .slice(-3).map(m => clip(m.text, 140));
+    .slice(-(App.dev.bridgeCount ?? 3) || Infinity).map(m => clip(m.text, App.dev.bridgeChars ?? 200));   // 0 = none (slice(Infinity) is empty)
   return sums.length ? `System: Things ${n} remembers from other conversations: ${sums.join(' / ')}\n` : '';
 }
 function threadBusy() {

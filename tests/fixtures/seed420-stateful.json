@@ -1,0 +1,659 @@
+{
+  "format": "consciousnode.dialogue/1",
+  "app": "multi-pip-chat",
+  "appVersion": "factory-2",
+  "exportedAt": "2026-10-23T21:10:29.069Z",
+  "run": {
+    "id": "run-mvlf65ds",
+    "seed": "420",
+    "seedWasChosen": true,
+    "startedAt": "2026-10-23T20:25:33.376Z",
+    "endedAt": "2026-10-23T21:09:54.871Z",
+    "endReason": "complete",
+    "interrupted": false,
+    "settingsChangedMidRun": false,
+    "segments": [
+      {
+        "at": "2026-10-23T20:25:33.380Z",
+        "maxTurns": 40,
+        "topic": "free",
+        "settings": {
+          "temperature": 1,
+          "topP": 0.9,
+          "topK": 0,
+          "presence": 0.4,
+          "frequency": 0.4,
+          "penaltyDecay": 0.996,
+          "maxTokens": 120,
+          "contextLines": 5,
+          "systemPrompt": true,
+          "userName": "no one else",
+          "delayMs": 500,
+          "mode": "stateful"
+        },
+        "pips": [
+          {
+            "name": "Wren",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Wren. You are in a chat room with Moss, Clover, Pebble and no one else."
+          },
+          {
+            "name": "Moss",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Moss. You are in a chat room with Wren, Clover, Pebble and no one else."
+          },
+          {
+            "name": "Clover",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Clover. You are in a chat room with Wren, Moss, Pebble and no one else."
+          },
+          {
+            "name": "Pebble",
+            "modelFile": "converted.safetensors",
+            "modelKind": "rwkv7",
+            "version": "x070",
+            "params": "191.0M",
+            "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+            "note": "",
+            "stateTokens": null,
+            "systemBlock": "System: You are Pebble. You are in a chat room with Wren, Moss, Clover and no one else."
+          }
+        ]
+      }
+    ]
+  },
+  "topic": {
+    "key": "free",
+    "text": ""
+  },
+  "pips": [
+    {
+      "name": "Wren",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": 1144,
+      "systemBlock": "System: You are Wren. You are in a chat room with Moss, Clover, Pebble and no one else."
+    },
+    {
+      "name": "Moss",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": 1210,
+      "systemBlock": "System: You are Moss. You are in a chat room with Wren, Clover, Pebble and no one else."
+    },
+    {
+      "name": "Clover",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": 1238,
+      "systemBlock": "System: You are Clover. You are in a chat room with Wren, Moss, Pebble and no one else."
+    },
+    {
+      "name": "Pebble",
+      "modelFile": "converted.safetensors",
+      "modelKind": "rwkv7",
+      "version": "x070",
+      "params": "191.0M",
+      "fingerprint": "sha256-headtail:91781a71dad40bf3ff87e840d855d551e44eac31fc789e430db2f59ae4c35b48",
+      "note": "",
+      "stateTokens": 1298,
+      "systemBlock": "System: You are Pebble. You are in a chat room with Wren, Moss, Clover and no one else."
+    }
+  ],
+  "dialogue": [
+    {
+      "turn": 1,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Hey. How are you?",
+      "time": "2026-10-23T20:25:46.064Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 2,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "So what do you think about it? I’m a bit surprised to hear about what happened here last time.",
+      "time": "2026-10-23T20:26:10.184Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 3,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "A bit. I’ve read the books and decided I’d try it for a little while. This whole family thing, you know? There’s a couple of letters about half an hour ago that didn’t seem to make much sense but we both seemed to like them so, so I’m up to the challenge. There was someone else on this girl who apparently ran away and everyone’s making rumors to base her choice but we’re sure we’ll be able to find out for sure after one thing seems clear: that a book found in the shed is not your typical action set, which is not usually",
+      "time": "2026-10-23T20:27:23.602Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 4,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "What do you mean by that? It makes perfect sense. If you were in an orphanage in these sort of situations, they would usually have this type of room where the soldiers, both boys and girls, would see each other and those kids from that same side of the room weren’t allowed to have anything to do with the kids. It would also mean that there is one authority figure who knows the guard",
+      "time": "2026-10-23T20:29:05.457Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 5,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "You mean someone like your father?",
+      "time": "2026-10-23T20:31:44.548Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 6,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "No, but they’ve seen some pictures and I’m sure they know the right thing to do.",
+      "time": "2026-10-23T20:33:21.505Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 7,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Yeah. But if they had a rightful place, where they could keep their people safe then maybe it would have made sense…they’d see people like this.",
+      "time": "2026-10-23T20:36:20.029Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 8,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Of course I’m not going to complain about it. As a reader, if I think a book wasn’t right…I’d be right for it. No man deserves to hate anyone because someone else made his mistake in their life, especially after what he did. Who’s the loser?",
+      "time": "2026-10-23T20:37:41.809Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 9,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Well, it’s a self-imposed reality if not forced upon us by the condition of our subject as a human being – and all sort of thing. It is not an exclusive custom to my sonic bone structure, most people try to shut their mouths and avoid mentioning this stuff…quite obviously. Some books can hold content that defies it, however others don’t. People like yourself have been brought up in a certain society but when they feel pressured to take matters into their own hands then as a result of years of ‘ageing’ they start to think that if things change or",
+      "time": "2026-10-23T20:40:33.691Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 10,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Well then let’s see about this…how many of them are there from the books we read?",
+      "time": "2026-10-23T20:42:10.871Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 11,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Almost every book from time-to-time. It’s been said that there are usually two or three characters in each book with at least three novels in it (that’s because, I guess those monsters aren’t willing to work well alone). And of course we still see characters with several other people, which also means that they don’t have the same stories told over and over again throughout the time you’re reading it, both by virtue of what stories are included inside (whether they’re present) or not (think about",
+      "time": "2026-10-23T20:44:21.106Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 12,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "I’m sure I’d find another story inside but for now what we’re doing here is trying to understand how…",
+      "time": "2026-10-23T20:46:22.475Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 13,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Well who exactly are you talking about here?",
+      "time": "2026-10-23T20:49:19.607Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 14,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "My parents, too?",
+      "time": "2026-10-23T20:50:24.363Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 15,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Well my parents have only a few books related to this stuff, one of them being Lord Bramell. Although",
+      "time": "2026-10-23T20:51:30.704Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 16,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Look…",
+      "time": "2026-10-23T20:51:59.606Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 17,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Oo…",
+      "time": "2026-10-23T20:52:27.033Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 18,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Well…wait a minute…",
+      "time": "2026-10-23T20:54:19.098Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 19,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Now wait a minute…it’s his own book",
+      "time": "2026-10-23T20:54:40.857Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 20,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "It’s your own",
+      "time": "2026-10-23T20:54:56.915Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 21,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "So…",
+      "time": "2026-10-23T20:55:12.395Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 22,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Maybe, you think so too. But maybe",
+      "time": "2026-10-23T20:55:30.811Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 23,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Are you sure? And I don’t think so, it sounds too weird now that this is going on.",
+      "time": "2026-10-23T20:55:55.421Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 24,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "That was a long time ago. I was born in the second half of that century but in my own mind, it’s not very far away right now. So",
+      "time": "2026-10-23T20:56:29.576Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 25,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Well I’m not just saying that now, are we?",
+      "time": "2026-10-23T20:57:05.049Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 26,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "That sounds like so and that’s a problem I had for quite a long time. It does seem like I’m missing some words here but do tell me exactly why I’m wondering if it is “how many novels are in this book” and we can discuss that later today. Now since I said there isn’t much right now then it’s not my place to do anything else…",
+      "time": "2026-10-23T20:58:10.530Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 27,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "So you’ve already been mentioned a bit? I wonder if we should start checking out the other books in the story now because of how strange this story is…",
+      "time": "2026-10-23T20:59:21.238Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 28,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Yes please. We can just use books as examples but to be honest, maybe we should use this library now since it is only limited and if",
+      "time": "2026-10-23T21:00:34.655Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 29,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "Look…",
+      "time": "2026-10-23T21:01:34.906Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 30,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Oh yeah, that’s what you’re talking about now? Like",
+      "time": "2026-10-23T21:02:36.190Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 31,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Where’s anything else?",
+      "time": "2026-10-23T21:03:09.444Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 32,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "I couldn’t really see anything in there because I only got one hour-long book in here after all",
+      "time": "2026-10-23T21:03:41.658Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 33,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "So what’s your favourite part of this story now that we have a chance to read it?",
+      "time": "2026-10-23T21:04:11.172Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 34,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Right?",
+      "time": "2026-10-23T21:04:40.154Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 35,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "Oh, you mean right now that’s all?",
+      "time": "2026-10-23T21:05:08.490Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 36,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "It’s always fun watching how",
+      "time": "2026-10-23T21:05:37.277Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 37,
+      "speaker": "Wren",
+      "role": "pip",
+      "text": "If you go back to 2016 and read chapters two and three now. Well they’ve all started and the hints for both each of these chapters are very clear, what’s new and how do you think they’re going to work with that at this time, which just keeps pulling me in many different directions.",
+      "time": "2026-10-23T21:06:23.211Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 38,
+      "speaker": "Moss",
+      "role": "pip",
+      "text": "Yeah it is. A lot of people have read this book and I have to say my favourite part of it was when",
+      "time": "2026-10-23T21:07:07.839Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 39,
+      "speaker": "Clover",
+      "role": "pip",
+      "text": "So the author decided to give their own script and also from what I hear there are several of them. Which means we can read this even more in depth but so far our main concern is really finding out how it all actually works and who the people are on those various boards.",
+      "time": "2026-10-23T21:08:12.423Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    },
+    {
+      "turn": 40,
+      "speaker": "Pebble",
+      "role": "pip",
+      "text": "Interesting and full of humor, which makes the book even more enjoyable so far. I think that you’d be able to come to a conclusion if you kept reading this and explore more books of your choice. And please note that I’m not a fan of certain artists and I do consider themselves successful writers when it comes to novels and their work. I’ve read from time-to-time for more than five pages and have never written the screenplay or in any other way my mind played for me at the time.",
+      "time": "2026-10-23T21:09:54.351Z",
+      "settings": {
+        "temperature": 1,
+        "presence": 0.4,
+        "frequency": 0.4,
+        "mode": "stateful"
+      }
+    }
+  ],
+  "filter": {
+    "verdict": "not-run",
+    "flags": []
+  }
+}
