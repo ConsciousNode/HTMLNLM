@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Will It Run Here?</title>
+<!-- Will It Run Here? · ConsciousNode SoftWorks · MIT License · Kham + Kehai Interim, 2026-10-27
+     One file, no dependencies, works offline. Scans what this browser and device can do, measures this CPU's
+     speed, and says which Pip Suite models will run here. Nothing leaves the page. -->
+<style>
+:root {
+  /* Layout: verdict first (models that will run here), then the scan in labelled sections; one column on phones. */
+  --bg: #f4f6f5; --panel: #ffffff; --line: #d6dedb; --ink: #17201d; --muted: #5d6b66;
+  --accent: #0f8a7a; --good: #1d7a3e; --warn: #9a6400; --bad: #b3261e;
+  --good-bg: #e3f3e8; --warn-bg: #fbf0d9; --bad-bg: #fbe4e2; --off-bg: #eceff0;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1211; --panel: #141b19; --line: #25302d; --ink: #e3ebe8; --muted: #8fa19b;
+  --accent: #2dd4bf; --good: #6fd08f; --warn: #f2bd5c; --bad: #ff8a80;
+  --good-bg: #13291b; --warn-bg: #2e2412; --bad-bg: #331816; --off-bg: #1b2321; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0d1211; --panel: #141b19; --line: #25302d; --ink: #e3ebe8; --muted: #8fa19b;
+  --accent: #2dd4bf; --good: #6fd08f; --warn: #f2bd5c; --bad: #ff8a80;
+  --good-bg: #13291b; --warn-bg: #2e2412; --bad-bg: #331816; --off-bg: #1b2321; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+main { max-width: 1040px; margin: 0 auto; padding: 24px 20px 48px; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-family: var(--mono); font-size: 26px; letter-spacing: 0.5px; margin: 0; color: var(--accent); text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 62ch; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] button.primary { color: #062420; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.primary { color: #062420; } }
+button:hover { border-color: var(--accent); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: 0.6; cursor: progress; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+h2 { font-size: 13px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-family: var(--mono); font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--off-bg); }
+.chip b { font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+td.num, th.num { text-align: right; white-space: nowrap; font-family: var(--mono); font-size: 14px; }
+tr:last-child td { border-bottom: none; }
+.wrap { overflow-x: auto; }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.good { background: var(--good-bg); color: var(--good); } .warn { background: var(--warn-bg); color: var(--warn); }
+.bad { background: var(--bad-bg); color: var(--bad); } .off { background: var(--off-bg); color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+dl { margin: 0; display: grid; grid-template-columns: minmax(120px, 42%) 1fr; gap: 6px 12px; }
+dt { color: var(--muted); font-size: 14px; } dd { margin: 0; font-family: var(--mono); font-size: 13.5px; overflow-wrap: anywhere; min-width: 0; }
+summary { cursor: pointer; color: var(--accent); }
+.api { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 14px; }
+.api div { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; border-bottom: 1px dashed var(--line); padding: 3px 0; }
+.note { color: var(--muted); font-size: 13px; margin: 10px 0 0; max-width: 75ch; }
+.model { font-weight: 600; } .model small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; }
+.status { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+#copied { color: var(--good); font-size: 13px; }
+@media (max-width: 520px) { main { padding: 16px 16px 40px; } h1 { font-size: 22px; } dl { grid-template-columns: 1fr; } dt { margin-top: 6px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Will it run here?</h1>
+      <p class="sub">Checks what this browser and device can do, times this CPU on the same math the Pip Suite runs, and says which models will run here. It all happens on this page: nothing is sent anywhere.</p>
+    </div>
+    <div class="actions">
+      <button class="primary" id="rescan">Scan again</button>
+      <button id="copy">Copy report</button>
+      <span id="copied" role="status"></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-verdict">
+    <h2 id="h-verdict">Pip Suite on this device</h2>
+    <div class="chips" id="summary"><span class="chip">Scanning…</span></div>
+    <div class="wrap" style="margin-top:14px">
+      <table>
+        <thead><tr><th>Model</th><th class="num">File</th><th class="num">Memory</th><th class="num">Speed here</th><th>Verdict</th></tr></thead>
+        <tbody id="models"><tr><td colspan="5" class="status">Timing this CPU…</td></tr></tbody>
+      </table>
+    </div>
+    <p class="note" id="method">Speed is estimated from a timed matrix-vector product (the operation a model spends nearly all its time on), scaled by measurements of the real HTMLNLM engine on the real G1 checkpoints. Memory is what the engine measured after loading each file. The engine runs on the CPU, one thread, in any modern browser.</p>
+  </section>
+
+  <div class="grid">
+    <section aria-labelledby="h-cpu"><h2 id="h-cpu">Processor</h2><dl id="cpu"></dl></section>
+    <section aria-labelledby="h-mem"><h2 id="h-mem">Memory and storage</h2><dl id="mem"></dl></section>
+    <section aria-labelledby="h-gpu"><h2 id="h-gpu">WebGPU</h2><dl id="gpu"></dl></section>
+    <section aria-labelledby="h-gl"><h2 id="h-gl">WebGL</h2><dl id="gl"></dl></section>
+    <section aria-labelledby="h-audio"><h2 id="h-audio">Sound and speech</h2><dl id="audio"></dl></section>
+    <section aria-labelledby="h-dev"><h2 id="h-dev">Browser and screen</h2><dl id="dev"></dl></section>
+  </div>
+
+  <section aria-labelledby="h-api"><h2 id="h-api">Web platform features</h2><div class="api" id="api"></div>
+    <p class="note">Device features (USB, serial, Bluetooth, MIDI) only report that the browser has them; nothing here asks for permission or touches a device.</p></section>
+</main>
+
+<script>
+'use strict';
+// ── Measurements behind the verdict (HTMLNLM engine v1.12, one thread, Node 22 / V8, 2026-10-27) ──
+// On that machine this page's benchmark (BENCH below) took REF_BENCH_MS; each model's real ms/token there,
+// divided by REF_BENCH_MS, gives how many benchmark-units one token costs. RAM = process memory after load.
+const REF_BENCH_MS = 1.40;
+const MODELS = [
+  { name: 'RWKV-7 G1 0.1B', params: 0.19, file: 'Q8_0 .gguf', mb: 212, ramMB: 524,  msTok: 326 },
+  { name: 'RWKV-7 G1 0.4B', params: 0.45, file: 'Q4_K_M .gguf', mb: 301, ramMB: 752,  msTok: 767 },
+  { name: 'RWKV-7 G1 0.1B', params: 0.19, file: '.pth / .safetensors', mb: 382, ramMB: 1643, msTok: 271 },
+  { name: 'RWKV-7 G1 0.4B', params: 0.45, file: '.pth / .safetensors', mb: 902, ramMB: 3813, msTok: 806 },
+];
+const report = {};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const yes = (v, good = 'good') => v ? `<span class="pill ${good}">yes</span>` : `<span class="pill off">no</span>`;
+function fill(id, rows) { $(id).innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join(''); }
+const txt = v => esc(v ?? 'not reported');
+
+// ── benchmark: float32 matvec 768×768, the size of one 0.1B projection ──
+function BENCH() {
+  const n = 768, W = new Float32Array(n * n), x = new Float32Array(n), y = new Float32Array(n);
+  for (let i = 0; i < W.length; i++) W[i] = Math.sin(i) * 0.01; for (let i = 0; i < n; i++) x[i] = Math.cos(i);
+  const run = () => { for (let o = 0; o < n; o++) { let s = 0; const r = o * n; for (let i = 0; i < n; i++) s += W[r + i] * x[i]; y[o] = s; } };
+  for (let k = 0; k < 20; k++) run();
+  const t0 = performance.now(); let reps = 0; while (performance.now() - t0 < 500) { run(); reps++; }
+  return (performance.now() - t0) / reps;
+}
+const pause = () => new Promise(r => setTimeout(r, 30));
+async function benchMedian() { const t = []; for (let i = 0; i < 3; i++) { t.push(BENCH()); await pause(); } t.sort((a, b) => a - b); return t[1]; }
+
+// ── WebAssembly: tiny modules that only validate if the feature exists ──
+const WASM_SIMD = new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,22,1,20,0,253,12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,11]);
+const WASM_SHARED_MEM = new Uint8Array([0,97,115,109,1,0,0,0,5,4,1,3,1,1]);
+const wasmOk = b => { try { return typeof WebAssembly === 'object' && WebAssembly.validate(b); } catch (e) { return false; } };
+
+async function scanGPU() {
+  const out = { available: !!navigator.gpu };
+  if (!navigator.gpu) return out;
+  try {
+    const ad = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!ad) { out.adapter = null; return out; }
+    const info = ad.info || (ad.requestAdapterInfo ? await ad.requestAdapterInfo() : {});
+    out.adapter = { vendor: info.vendor || '', architecture: info.architecture || '', description: info.description || '', fallback: !!(ad.isFallbackAdapter || info.isFallbackAdapter) };
+    out.features = [...ad.features].sort();
+    const L = ad.limits; out.limits = {};
+    for (const k of ['maxBufferSize', 'maxStorageBufferBindingSize', 'maxComputeWorkgroupStorageSize', 'maxComputeInvocationsPerWorkgroup', 'maxComputeWorkgroupSizeX'])
+      if (k in L) out.limits[k] = L[k];
+  } catch (e) { out.error = e.message; }
+  return out;
+}
+function scanGL() {
+  const out = {};
+  try {
+    const c = document.createElement('canvas'); let gl = c.getContext('webgl2'); out.webgl2 = !!gl;
+    if (!gl) { gl = c.getContext('webgl'); out.webgl1 = !!gl; }
+    if (!gl) return out;
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    out.renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    out.vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+    out.maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    const ext = gl.getSupportedExtensions() || [];
+    out.floatRender = ext.includes('EXT_color_buffer_float');
+    out.floatLinear = ext.includes('OES_texture_float_linear');
+    out.halfFloatRender = ext.includes('EXT_color_buffer_half_float') || out.floatRender;
+    out.extensions = ext.length;
+    const lose = gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
+  } catch (e) { out.error = e.message; }
+  return out;
+}
+async function scanStorage() {
+  const out = {};
+  try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); out.quotaMB = Math.round(e.quota / 1048576); out.usedMB = Math.round(e.usage / 1048576); } } catch (e) {}
+  try { out.persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { out.persisted = null; }
+  out.indexedDB = typeof indexedDB !== 'undefined';
+  try { out.opfs = !!(navigator.storage && navigator.storage.getDirectory); } catch (e) { out.opfs = false; }
+  return out;
+}
+function scanAudio() {
+  const out = {};
+  const AC = window.AudioContext || window.webkitAudioContext; out.webAudio = !!AC;
+  if (AC) { try { const ac = new AC(); out.sampleRate = ac.sampleRate; out.worklet = !!ac.audioWorklet; out.baseLatencyMs = ac.baseLatency ? +(ac.baseLatency * 1000).toFixed(1) : null; ac.close(); } catch (e) { out.error = e.message; } }
+  out.offline = typeof OfflineAudioContext !== 'undefined';
+  out.speechSynthesis = 'speechSynthesis' in window;
+  out.voices = out.speechSynthesis ? speechSynthesis.getVoices().length : 0;
+  out.speechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  return out;
+}
+function scanAPIs() {
+  const n = navigator, w = window;
+  return {
+    'Web Workers': typeof Worker !== 'undefined', 'Shared memory (SharedArrayBuffer)': typeof SharedArrayBuffer !== 'undefined',
+    'Cross-origin isolated': !!w.crossOriginIsolated, 'OffscreenCanvas': typeof OffscreenCanvas !== 'undefined',
+    'WebCodecs': typeof w.VideoDecoder !== 'undefined', 'WebNN (navigator.ml)': !!n.ml,
+    'Compression streams': typeof w.CompressionStream !== 'undefined', 'File picker (File System Access)': typeof w.showOpenFilePicker === 'function',
+    'Service workers (installable offline)': 'serviceWorker' in n, 'Wake lock': 'wakeLock' in n,
+    'Web Serial': 'serial' in n, 'WebUSB': 'usb' in n, 'WebHID': 'hid' in n, 'Web Bluetooth': 'bluetooth' in n,
+    'Web MIDI': typeof n.requestMIDIAccess === 'function', 'Gamepads': typeof n.getGamepads === 'function',
+    'Vibration': typeof n.vibrate === 'function', 'Web Share': typeof n.share === 'function',
+    'Clipboard write': !!(n.clipboard && n.clipboard.writeText), 'Camera / microphone API': !!(n.mediaDevices && n.mediaDevices.getUserMedia),
+  };
+}
+function browserName() {
+  const ua = navigator.userAgent, d = navigator.userAgentData;
+  if (d && d.brands) { const b = d.brands.find(x => !/Not.?A.?Brand|Chromium/i.test(x.brand)) || d.brands.find(x => /Chromium/.test(x.brand)); if (b) return `${b.brand} ${b.version}`; }
+  const m = ua.match(/(Firefox|Edg|OPR|Chrome|Version)\/([\d.]+)/); if (!m) return ua.slice(0, 60);
+  const name = { Edg: 'Edge', OPR: 'Opera', Version: /Safari/.test(ua) ? 'Safari' : 'Browser' }[m[1]] || m[1];
+  return `${name} ${m[2].split('.')[0]}`;
+}
+
+function verdict(ms, ramMB, memGB, heapMB) {
+  const budgetMB = memGB ? memGB * 1024 * 0.6 : null;          // leave room for the OS and other tabs
+  if (heapMB && ramMB > heapMB * 0.9) return ['bad', 'too big for one tab'];
+  if (budgetMB && ramMB > budgetMB) return ['bad', 'not enough memory'];
+  if (ms < 800) return ['good', 'runs well'];          // ~1.3+ tokens/s: fine for chat
+  if (ms < 2000) return ['warn', 'runs, slowly'];
+  return ['bad', 'very slow'];
+}
+
+async function scan() {
+  $('rescan').disabled = true; $('rescan').textContent = 'Scanning…';
+  const n = navigator, mem = n.deviceMemory || null, heapMB = performance.memory ? Math.round(performance.memory.jsHeapSizeLimit / 1048576) : null;
+  report.when = new Date().toISOString(); report.browser = browserName(); report.platform = (n.userAgentData && n.userAgentData.platform) || n.platform || '';
+  report.mobile = n.userAgentData ? n.userAgentData.mobile : /Mobi|Android/i.test(n.userAgent);
+  report.cores = n.hardwareConcurrency || null; report.deviceMemoryGB = mem; report.jsHeapLimitMB = heapMB;
+  report.wasm = { available: typeof WebAssembly === 'object', simd: wasmOk(WASM_SIMD), sharedMemory: wasmOk(WASM_SHARED_MEM), threadsUsable: wasmOk(WASM_SHARED_MEM) && !!window.crossOriginIsolated };
+  report.gl = scanGL(); report.audio = scanAudio(); report.apis = scanAPIs();
+  fill('dev', [['Browser', txt(report.browser)], ['Platform', txt(report.platform)], ['Phone or tablet', report.mobile ? 'yes' : 'no'],
+    ['Screen', `${screen.width} × ${screen.height}, ${window.devicePixelRatio}× pixels`], ['Language', txt(n.language)], ['Online now', n.onLine ? 'yes' : 'no']]);
+  fill('gl', report.gl.webgl2 || report.gl.webgl1 ? [['Version', report.gl.webgl2 ? 'WebGL 2' : 'WebGL 1 only'], ['Renderer', txt(report.gl.renderer)], ['Vendor', txt(report.gl.vendor)],
+    ['Largest texture', `${report.gl.maxTexture} px`], ['Float render targets', yes(report.gl.floatRender)], ['Half-float render targets', yes(report.gl.halfFloatRender)],
+    ['Float texture filtering', yes(report.gl.floatLinear)], ['Extensions', report.gl.extensions]] : [['WebGL', '<span class="pill bad">not available</span>']]);
+  fill('audio', [['Web Audio', yes(report.audio.webAudio)], ['Sample rate', report.audio.sampleRate ? `${report.audio.sampleRate} Hz` : '—'], ['AudioWorklet', yes(report.audio.worklet)],
+    ['Offline rendering', yes(report.audio.offline)], ['Built-in speech voices', report.audio.speechSynthesis ? String(report.audio.voices) + (report.audio.voices ? '' : ' (some browsers list them late)') : 'none'],
+    ['Speech recognition', yes(report.audio.speechRecognition)], ['Webster (offline voice)', report.audio.webAudio ? '<span class="pill good">works</span>' : '<span class="pill bad">needs Web Audio</span>']]);
+  $('api').innerHTML = Object.entries(report.apis).map(([k, v]) => `<div><span>${esc(k)}</span>${yes(v)}</div>`).join('');
+
+  report.storage = await scanStorage();
+  fill('mem', [['Device memory', mem ? `${mem >= 8 ? 'at least ' : ''}${mem} GB` : 'not reported by this browser'],
+    ['Largest page memory', heapMB ? `${(heapMB / 1024).toFixed(1)} GB` : 'not reported by this browser'],
+    ['Storage this page may use', report.storage.quotaMB != null ? `${(report.storage.quotaMB / 1024).toFixed(1)} GB (using ${report.storage.usedMB} MB)` : 'not reported'],
+    ['Protected from cleanup', report.storage.persisted == null ? 'unknown' : report.storage.persisted ? 'yes' : 'no (the browser may clear it when space runs low)'],
+    ['IndexedDB', yes(report.storage.indexedDB)], ['Private file system (OPFS)', yes(report.storage.opfs)]]);
+
+  report.gpu = await scanGPU();
+  const g = report.gpu;
+  fill('gpu', !g.available ? [['WebGPU', '<span class="pill off">not in this browser</span>']]
+    : !g.adapter ? [['WebGPU', '<span class="pill warn">present, but no GPU adapter</span>'], ['Error', txt(g.error || 'none given')]]
+    : [['WebGPU', g.adapter.fallback ? '<span class="pill warn">software fallback</span>' : '<span class="pill good">available</span>'],
+       ['GPU', txt([g.adapter.vendor, g.adapter.architecture].filter(Boolean).join(' · ') || g.adapter.description || 'not named')],
+       ['Half precision (shader-f16)', yes(g.features.includes('shader-f16'))], ['Subgroups', yes(g.features.includes('subgroups'))],
+       ['Largest buffer', g.limits.maxBufferSize ? `${Math.round(g.limits.maxBufferSize / 1048576)} MB` : '—'],
+       ['Largest storage binding', g.limits.maxStorageBufferBindingSize ? `${Math.round(g.limits.maxStorageBufferBindingSize / 1048576)} MB` : '—'],
+       ['Workgroup memory', g.limits.maxComputeWorkgroupStorageSize ? `${g.limits.maxComputeWorkgroupStorageSize / 1024} KB` : '—'],
+       ['Features', g.features.length ? `<details><summary>${g.features.length} features</summary>${esc(g.features.join(', '))}</details>` : 'none']]);
+
+  fill('cpu', [['Cores (threads)', txt(report.cores)], ['WebAssembly', yes(report.wasm.available)], ['WASM SIMD', yes(report.wasm.simd)],
+    ['WASM shared memory', yes(report.wasm.sharedMemory)], ['WASM threads usable here', report.wasm.threadsUsable ? yes(true) : '<span class="pill off">no</span> <small>(needs a cross-origin-isolated page)</small>'],
+    ['Benchmark', '<span class="status">timing…</span>']]);
+  await pause();
+  const ms = await benchMedian(); report.benchMs = +ms.toFixed(3);
+  const rel = REF_BENCH_MS / ms;
+  $('cpu').lastElementChild.innerHTML = `${ms.toFixed(2)} ms per 768×768 product<br><span class="pill ${rel >= 0.8 ? 'good' : rel >= 0.4 ? 'warn' : 'bad'}">${(rel * 100).toFixed(0)}% of the reference machine</span>`;
+
+  report.models = MODELS.map(m => { const est = m.msTok / REF_BENCH_MS * ms, [cls, word] = verdict(est, m.ramMB, mem, heapMB); return { ...m, estMsPerToken: Math.round(est), verdict: word, cls }; });
+  $('models').innerHTML = report.models.map(m => `<tr><td class="model">${esc(m.name)}<small>${esc(m.file)}</small></td><td class="num">${m.mb} MB</td>
+    <td class="num">${m.ramMB >= 1000 ? (m.ramMB / 1024).toFixed(1) + ' GB' : m.ramMB + ' MB'}</td><td class="num">~${m.estMsPerToken.toLocaleString()} ms/token<br><small>${(1000 / m.estMsPerToken).toFixed(1)} tokens/s</small></td>
+    <td><span class="pill ${m.cls}">${m.verdict}</span></td></tr>`).join('');
+  const rank = (a, b) => b.params - a.params || a.ramMB - b.ramMB;      // the biggest model that runs, in its leanest file
+  const best = report.models.filter(m => m.cls === 'good').sort(rank)[0] || report.models.filter(m => m.cls === 'warn').sort(rank)[0];
+  report.recommendation = best ? `${best.name} ${best.file}` : 'none of the listed models';
+  const chips = [
+    `<span class="chip">Best fit: <b>${esc(report.recommendation)}</b></span>`,
+    `<span class="chip">${esc(report.browser)}${report.mobile ? ' · phone' : ''}</span>`,
+    `<span class="chip">${report.cores || '?'} threads${mem ? ` · ${mem >= 8 ? '≥' : ''}${mem} GB` : ''}</span>`,
+    `<span class="chip">WebGPU: <b>${g.adapter ? (g.adapter.fallback ? 'software' : 'yes') : 'no'}</b></span>`,
+    `<span class="chip">WASM SIMD: <b>${report.wasm.simd ? 'yes' : 'no'}</b></span>`,
+  ];
+  $('summary').innerHTML = chips.join('');
+  $('rescan').disabled = false; $('rescan').textContent = 'Scan again';
+}
+
+function reportText() {
+  const r = report, L = [];
+  L.push(`Will it run here? report, ${r.when}`, `${r.browser} on ${r.platform}${r.mobile ? ' (phone/tablet)' : ''}, ${r.cores} threads, device memory ${r.deviceMemoryGB ?? '?'} GB, page heap limit ${r.jsHeapLimitMB ?? '?'} MB`);
+  L.push(`Benchmark: ${r.benchMs} ms (reference ${REF_BENCH_MS} ms). Best fit: ${r.recommendation}`);
+  for (const m of r.models || []) L.push(`  ${m.name} ${m.file}: ~${m.estMsPerToken} ms/token, ${m.ramMB} MB, ${m.verdict}`);
+  const g = r.gpu || {}; L.push(`WebGPU: ${g.adapter ? [g.adapter.vendor, g.adapter.architecture].filter(Boolean).join(' ') + (g.adapter.fallback ? ' (fallback)' : '') + `; features: ${g.features.join(', ')}` : g.available ? 'no adapter' : 'not available'}`);
+  L.push(`WebGL: ${r.gl.webgl2 ? 'WebGL2' : r.gl.webgl1 ? 'WebGL1' : 'none'}, ${r.gl.renderer || ''}, float render ${r.gl.floatRender ? 'yes' : 'no'}, max texture ${r.gl.maxTexture}`);
+  L.push(`WASM: SIMD ${r.wasm.simd ? 'yes' : 'no'}, shared memory ${r.wasm.sharedMemory ? 'yes' : 'no'}, threads usable ${r.wasm.threadsUsable ? 'yes' : 'no'}`);
+  L.push(`Audio: ${r.audio.webAudio ? r.audio.sampleRate + ' Hz' : 'none'}, worklet ${r.audio.worklet ? 'yes' : 'no'}, speech voices ${r.audio.voices}`);
+  L.push(`Storage: ${r.storage.quotaMB} MB quota, persisted ${r.storage.persisted}`);
+  L.push('Features: ' + Object.entries(r.apis).filter(([, v]) => v).map(([k]) => k).join(', '));
+  return L.join('\n');
+}
+$('rescan').addEventListener('click', scan);
+$('copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(reportText()); $('copied').textContent = 'Copied'; }
+  catch (e) { $('copied').textContent = 'Copy was blocked here; select the page text instead'; }
+  setTimeout(() => { $('copied').textContent = ''; }, 2500);
+});
+window.addEventListener('load', () => setTimeout(scan, 50));
+</script>
+</body>
+</html>
