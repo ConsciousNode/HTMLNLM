@@ -404,6 +404,13 @@ header h1 {
 .msg-btn:hover { opacity: 1; border-color: var(--text-muted); }
 .voice-block { border-top: 1px solid rgba(128,128,128,0.25); padding-top: 8px; margin-top: 8px; }
 .voice-block input[type=range] { width: 120px; }
+.message-thought { margin: 2px 0 8px; border-left: 2px solid var(--accent-dim); padding-left: 8px; }
+.message-thought summary { cursor: pointer; font-size: 12px; color: var(--text-muted); list-style: none; user-select: none; }
+.message-thought summary::-webkit-details-marker { display: none; }
+.message-thought summary::before { content: '▸ '; }
+.message-thought[open] summary::before { content: '▾ '; }
+.thought-body { font-size: 12.5px; color: var(--text-soft); white-space: pre-wrap; margin-top: 6px; max-height: 50vh; overflow-y: auto; }
+.thought-conclusion { font-size: 12.5px; color: var(--text-main); margin-top: 6px; }
 .message-speed { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
 .message-recall {
   font-size: 11px;
@@ -4541,7 +4548,18 @@ function formatTimeAgo(date) {
   return Math.floor(hours / 24) + 'd ago';
 }
 
-function addMessage(text, sender, ts) {
+// Their reasoning, folded on top of the reply it led to (closed until you tap it).
+function thoughtPanel(th, open) {
+  const d = document.createElement('details'); d.className = 'message-thought'; d.open = !!open;
+  const sm = document.createElement('summary'), body = document.createElement('div'); body.className = 'thought-body';
+  const words = (th.text.match(/\S+/g) || []).length;
+  sm.textContent = th.streaming ? `🤔 Thinking… ${words} words` : `🤔 Thought for ${words} words${th.private ? ' (private)' : ''}`;
+  body.textContent = th.text + (th.streaming ? ' ▍' : '');
+  d.append(sm, body);
+  if (th.conclusion) { const c = document.createElement('div'); c.className = 'thought-conclusion'; c.textContent = '→ ' + th.conclusion; d.appendChild(c); }
+  return d;
+}
+function addMessage(text, sender, ts, opts = {}) {
   const area = document.getElementById('conversation-area');
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
@@ -4564,6 +4582,7 @@ function addMessage(text, sender, ts) {
   actions.appendChild(play);
   
   msg.appendChild(senderEl);
+  if (opts.thought?.text) msg.appendChild(thoughtPanel(opts.thought, opts.open));
   msg.appendChild(textEl);
   msg.appendChild(actions);
   area.appendChild(msg);
@@ -4638,7 +4657,18 @@ async function generateResponse(prompt, maxTokens = 80, temp = 0.85) {
   return response;
 }
 
+// If anything in a turn throws, the room must not stay stuck "generating": log it, clean up, give the box back.
 async function handleUserMessage() {
+  try { await handleUserMessageInner(); }
+  catch (e) {
+    console.error('The turn failed:', e);
+    hideTypingIndicator(); document.querySelectorAll('.message.pip.streaming').forEach(el => el.remove()); setSoulConsole('');
+    const input = document.getElementById('message-input'); input.disabled = false; document.getElementById('send-btn').disabled = false;
+    App.isGenerating = false; App.lastTurnAt = Date.now();
+    showToast('Something went wrong with that reply. Details are in Settings → Developer console → Log & errors', 'warning', 10000);
+  }
+}
+async function handleUserMessageInner() {
   const input = document.getElementById('message-input');
   const text = input.value.trim();
   if (!text || App.isGenerating) return;
@@ -4670,7 +4700,7 @@ async function handleUserMessage() {
   
   
   const startTime = Date.now();
-  let response;
+  let response, thoughtShown = null, thoughtOpen = false, reasoningAt = null;
   if (liveOn()) {
     const before = App.live ? App.live.tokens : 0;
     const thinking = App.dev.think;
@@ -4679,14 +4709,30 @@ async function handleUserMessage() {
     // "Assistant: <think"): with name labels a 0.1B gets lost; with these it reasons. Who they are
     // is carried by the System lines, and the answer may run several lines (it ends at a blank line).
     const TL = { bit: ' (think a bit)', think: ' (think)', lot: ' (think a lot)', quick: '' }[App.dev.thinkLength] ?? ' (think)';
-    const fedPrompt = thinking ? `\n${rec.lines}User: ${text.replace(/\n{2,}/g, '\n').trim()}${TL}\n\nAssistant:` : prompt;
-    const t = await liveTurn(fedPrompt, thinking ? App.dev.maxTokens * 2 : App.dev.maxTokens, App.dev.temperature,
-                             { think: thinking, quickThink: thinking && App.dev.thinkLength === 'quick', endOn: thinking ? '\n\n' : '\n', onToken: stream.update });
+    const clean = thinking && App.dev.cleanRoom !== false && App.dev.thinkLength !== 'quick';
+    let t;
+    if (clean) {
+      // think in a scratch state, then answer in their own voice with the conclusion in mind
+      const cr = await cleanRoomThink(text, rec.items, stream.think);
+      const n = App.soul?.name || 'Resident';                     // (pipName here is the name, not the function)
+      const fed = (cr.answer ? `System: ${n} thought it over and concluded: ${cr.answer}\n` : '') + prompt;
+      t = await liveTurn(fed, App.dev.maxTokens, App.dev.temperature, { endOn: '\n', onToken: stream.update });
+      t.thought = cr.thought; t.conclusion = cr.answer;
+      t.fed = `[thought it over in a clean room]\n${cr.prompt}${cr.thought}</think>\n${cr.answer}\n\n[then, in their living state]\n` + t.fed;
+    } else {
+      const fedPrompt = thinking ? `\n${rec.lines}User: ${text.replace(/\n{2,}/g, '\n').trim()}${TL}\n\nAssistant:` : prompt;
+      t = await liveTurn(fedPrompt, thinking ? App.dev.maxTokens * 2 : App.dev.maxTokens, App.dev.temperature,
+                         { think: thinking, quickThink: thinking && App.dev.thinkLength === 'quick', endOn: thinking ? '\n\n' : '\n', onToken: stream.update, onThink: stream.think });
+    }
+    thoughtOpen = stream.thoughtOpen();
     stream.remove();
     response = t.text;
     if (thinking && t.thought) {
       const shared = App.privacy.innerVoice;
-      App.memories.push({ thread: App.activeThread, type: 'reasoning', text: t.thought, about: text, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
+      thoughtShown = { text: t.thought, conclusion: t.conclusion || '', private: !shared };
+      App.memories.push({ thread: App.activeThread, type: 'reasoning', text: t.thought, about: text, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral',
+                          ...(t.conclusion ? { conclusion: t.conclusion, cleanRoom: true } : {}) });
+      reasoningAt = App.memories.at(-1).timestamp;
       addInnerLifeEntry('reasoning', shared ? t.thought : `(${App.soul?.name || 'Resident'} kept this one private)`, shared ? {} : { private: true });
       noteNewInnerLife();
     }
@@ -4695,7 +4741,7 @@ async function handleUserMessage() {
   const duration = Date.now() - startTime;
   
   hideTypingIndicator();
-  addMessage(response, 'pip');
+  addMessage(response, 'pip', null, { thought: thoughtShown, open: thoughtOpen });
   showSpeed(App.fwdCount - fw0, App.tokensGenerated - gen0, performance.now() - tStart);
   showRecallNote(rec.notes);
   if (App.dev.speak) WebsterVoice.speak(response, voiceOf('pip'));   // Webster: read aloud automatically, offline
@@ -4707,6 +4753,7 @@ async function handleUserMessage() {
     response: response,
     timestamp: Date.now(),
     mood: App.soul?.mood || 'neutral',
+    ...(reasoningAt ? { reasoningAt } : {}),
     gen: turnSettings({ speed: App.lastSpeed, recalled: rec.notes, retried: (App.sameReplyRetries || 0) > retries0 })
   });
   
@@ -4736,7 +4783,7 @@ async function handleUserMessage() {
 // ── Settings for the voice (the developer console edits these; saved with the soul) ──
 const DEV_DEFAULTS = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996,
                        maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true, livingMemory: true,
-                       think: false, thinkTokens: 400, thinkLength: 'think', speak: false, voice: 'female', voices: null, stream: true, bridgeCount: 3, bridgeChars: 200, recall: true };
+                       think: false, thinkTokens: 400, thinkLength: 'think', speak: false, voice: 'female', voices: null, stream: true, cleanRoom: true, bridgeCount: 3, bridgeChars: 200, recall: true };
 App.dev = { ...DEV_DEFAULTS };
 App.userName = '';           // what the resident calls you; empty = "friend" in the prompt, "User" as the label
 App.about = '';              // a free note prepended to every conversation
@@ -4898,7 +4945,7 @@ function buildDevConsole() {
     sel.value = App.dev.thinkLength || 'think'; sel.onchange = () => { App.dev.thinkLength = sel.value; refreshPromptView(); };
     row.appendChild(sel); box.appendChild(row); }
   buildVoiceControls(box);
-  for (const [key, label] of [['think', 'Think before answering (uses the model\'s own User:/Assistant: format for that turn; reasoning goes to the journal; needs living memory)'], ['livingMemory', 'Living memory (keep the RWKV state between turns)'], ['recall', 'Recall (search summaries every reply; bring back an old exchange word for word when asked to remember)'], ['stream', 'Stream replies (watch each token arrive)'], ['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
+  for (const [key, label] of [['think', 'Think before answering (uses the model\'s own User:/Assistant: format for that turn; reasoning goes to the journal; needs living memory)'], ['livingMemory', 'Living memory (keep the RWKV state between turns)'], ['recall', 'Recall (search summaries every reply; bring back an old exchange word for word when asked to remember)'], ['stream', 'Stream replies (watch each token arrive)'], ['cleanRoom', 'Think in a clean room (reason in a fresh scratch state with only the memory and your question; they then answer in their own voice)'], ['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
     const row = document.createElement('label'); row.className = 'dev-row dev-check';
     row.innerHTML = `<span>${label}</span>`;
     const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!App.dev[key];
@@ -5038,7 +5085,7 @@ function markTrail() {
 }
 function rollBack(mark) { App.live.state = mark.state; App.live.lastLogits = mark.lastLogits; App.live.tokens = mark.tokens; }
 const thinkSampling = (D, temp) => ({ temp: Math.min(temp, 0.8), topP: Math.min(D.topP, 0.5) });
-async function thinkPhase(rep, temp) {
+async function thinkPhase(rep, temp, onThink) {
   const tok = App.tokenizer, D = App.dev, TS = thinkSampling(D, temp);
   let gen = [], logits = App.live.lastLogits; const trail = markTrail();
   for (let i = 0; i < D.thinkTokens; i++) {
@@ -5055,6 +5102,7 @@ async function thinkPhase(rep, temp) {
     if (st >= 0) { gen = gen.slice(0, trail.back(st, gen)); App.repeatCuts = (App.repeatCuts || 0) + 1; break; }
     trail.note(gen.length);
     if (i % 4 === 0) setSoulConsole(`Thinking... ${i + 1}`);
+    if (onThink) onThink(so.split('</think>')[0].replace(/^>\s*/, ''));
     await yieldToMain();
   }
   let thought = tok.decode(gen);
@@ -5066,6 +5114,64 @@ async function thinkPhase(rep, temp) {
   return thought;
 }
 
+// ── Clean-room thinking ──
+// A 0.4B reasons well from a clean state ("Kham has 4 cats and 2 dogs. How many pets…" → step by step → 6), but
+// on top of a living state full of System lines, persona, loop thoughts and emoji it reasons about the wrong thing
+// (its own system prompt, New York and Chicago) or answers in another language. And "do you remember…" makes it
+// reason about remembering. So: it thinks in a fresh scratch state holding only what matters (the memory or passage
+// recall found, your last exchange, your question asked plainly) in the model's own format. Only the conclusion
+// goes into their living state, and then they answer in their own voice.
+function plainQuestion(text) {
+  if (!RECALL_CUES.test(text)) return text;
+  const q = text.replace(RECALL_ASK, ' ').replace(/\s+/g, ' ').replace(/^[\s,?!.]+|[\s,?!.]+$/g, '');
+  if (q.length < 3) return text;
+  return /^(how|what|which|who|where|when|why|whether|if)\b/i.test(q) ? `Tell me ${q}.` : `${q[0].toUpperCase()}${q.slice(1)}?`;
+}
+async function cleanRoomThink(text, items, onThink) {
+  const tok = App.tokenizer, D = App.dev;
+  // Names, third person, your words quoted: "Earlier I told you…" flipped who was who (she counted your pets twice:
+  // 14), while the same facts with names reasoned cleanly to 6.
+  const ctx = [], last = chats().slice(-1)[0], you = App.userName || 'My friend', n = App.soul?.name || 'Resident';
+  // the previous exchange only if it reads as real sentences: one garbled reply ("…David Khanḥit…") poisoned the
+  // next clean room ("David and Khanḥit are talking about their cats")
+  if (last && meaningful(last.response) && meaningful(last.user + ' ' + last.response)) ctx.push(`Just now, ${you} said: "${clip(oneLine(last.user), 200)}" and ${n} replied: "${clip(oneLine(last.response), 200)}"`);
+  for (const m of items || []) {
+    if (m.type === 'conversation') ctx.push(`Earlier, ${you} said: "${clip(oneLine(m.user), 240)}" and ${n} replied: "${clip(oneLine(m.response), 160)}"`);
+    else if (m.type === 'document') ctx.push(`From the document "${m.doc}": "${clip(oneLine(m.text), 500)}"`);
+    else if (m.type === 'consolidation') ctx.push(`${n} remembers: "${clip(oneLine(m.text), 220)}"`);
+  }
+  const TL = { bit: ' (think a bit)', think: ' (think)', lot: ' (think a lot)' }[D.thinkLength] ?? ' (think)';
+  const q = plainQuestion(text).replace(/\s*\n+\s*/g, ' ').trim().replace(/"/g, "'");
+  const prompt = `User: ${ctx.length ? ctx.join('\n') + '\n' : ''}${you} asks ${n}: "${q}"${TL}\n\nAssistant: <think`;
+  const ids = tok.encode(prompt);
+  let st = App.model.getEmptyState(), r = null;
+  for (let i = 0; i < ids.length; i++) { r = App.model.forward(ids[i], st); st = r.state; if (i % 8 === 7) { setSoulConsole(`Thinking it over... reading ${Math.round(100 * i / ids.length)}%`); await yieldToMain(); } }
+  const rep = makeRepTracker({ presence: 0.5, frequency: 0.1, decay: D.decay }), TS = thinkSampling(D, D.temperature);
+  const step = async (max, stop, sample, onText) => {
+    let gen = [];
+    for (let i = 0; i < max; i++) {
+      const next = sampleLogits(rep.apply(r.logits), sample.temp, sample.topP, D.topK);
+      if (next === 0) break;
+      gen.push(next); App.tokensGenerated++; rep.step(); rep.add(next);
+      r = App.model.forward(next, st); st = r.state;
+      const so = tok.decode(gen);
+      if (onText) onText(so);
+      if (stop(so)) break;
+      const k = stuckAt(gen); if (k >= 0) { gen = gen.slice(0, k); break; }
+      if (i % 4 === 0) setSoulConsole(`Thinking it over... ${i + 1}`);
+      await yieldToMain();
+    }
+    return tok.decode(gen);
+  };
+  let thought = await step(D.thinkTokens, so => so.includes('</think>'), TS, so => onThink && onThink(so.split('</think>')[0].replace(/^>\s*/, '')));
+  const closed = thought.includes('</think>');
+  thought = thought.split('</think>')[0].replace(/^>\s*/, '').trim();
+  if (!closed) for (const id of tok.encode('</think>')) { r = App.model.forward(id, st); st = r.state; }
+  let answer = await step(80, so => /\n\s*\n/.test(so.trimStart()), { temp: 0.7, topP: 0.4 });
+  answer = oneLine(answer.trimStart().split(/\n\s*\n/)[0]).replace(/\*\*|__|^#+\s*/g, '').replace(/^(?:Assistant|(?:Final )?Answer)\s*:\s*/i, '').trim();
+  setSoulConsole('');
+  return { thought, answer: clip(answer, 300), prompt };
+}
 let _thinkToks = null;
 function thinkTokens(tok) {
   if (_thinkToks && _thinkToks.tok === tok) return _thinkToks.v;
@@ -5087,7 +5193,7 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
   // "quick" is the model card's fake thinking ("Assistant: <think></think"): the reasoning format, no reasoning.
   // Nice answers and fast, the best fit for a 0.1B, which can't yet reason its way to a right answer.
   if (opts.think && opts.quickThink) await feedLive(' <think></think>');
-  else if (opts.think) { await feedLive(' <think'); thought = await thinkPhase(rep, temp); }
+  else if (opts.think) { await feedLive(' <think'); thought = await thinkPhase(rep, temp, opts.onThink); }
   if (!opts.think) for (const m of App.memories.slice(-4)) if (m.response) for (const id of tok.encode(m.response)) rep.add(id);
   // G1 models sometimes open a (second) reasoning block as their answer ("<think>Okay, so…"): seen on a 0.1B Q4 in
   // Kham's phone test, with quick thinking on (the page writes "<think></think>", then she opened another).
@@ -5388,6 +5494,7 @@ async function recallFor(text) {
   for (const m of picked) { const k = memKey(m), u = R.uses[k] || { n: 0 }; u.n++; u.last = Date.now(); R.uses[k] = u; }
   App.recallRecent = [...App.recallRecent, ...picked.map(memKey)].slice(-6);
   App.lastRecallMs = Date.now() - t0;
+  out.items = picked;
   return out;
 }
 function showRecallNote(notes) {
@@ -5914,7 +6021,7 @@ function turnSettings(extra = {}) {
   const D = App.dev, sp = extra.speed;
   return { model: App.modelFile || null, shape: modelPrint() || null, temperature: D.temperature, topP: D.topP, topK: D.topK,
            presence: D.presence, frequency: D.frequency, decay: D.decay, maxTokens: D.maxTokens, contextTurns: D.contextTurns,
-           livingMemory: !!D.livingMemory, think: !!D.think, ...(D.think ? { thinkLength: D.thinkLength, thinkTokens: D.thinkTokens } : {}),
+           livingMemory: !!D.livingMemory, think: !!D.think, ...(D.think ? { thinkLength: D.thinkLength, thinkTokens: D.thinkTokens, cleanRoom: D.cleanRoom !== false && D.thinkLength !== 'quick' } : {}),
            recall: D.recall !== false, systemPrompt: !!D.systemPrompt, soulInPrompt: !!D.soulInPrompt,
            ...(sp ? { tokensWritten: sp.written, tokensRead: sp.processed - sp.written, seconds: +(sp.ms / 1000).toFixed(1), tokPerSec: +sp.rate.toFixed(2) } : {}),
            ...(extra.recalled?.length ? { recalled: extra.recalled } : {}), ...(extra.retried ? { retriedSameReply: true } : {}) };
@@ -5923,21 +6030,33 @@ function turnSettings(extra = {}) {
 // token). When the turn ends it's swapped for the finished message (the final text may be trimmed: a cut-off
 // speaker label, a repeat taken back).
 function streamBubble() {
-  if (App.dev.stream === false) return { update() {}, remove() {} };
-  let msg = null, textEl = null;
+  if (App.dev.stream === false) return { update() {}, think() {}, remove() {}, thoughtOpen: () => false };
+  let msg = null, textEl = null, panel = null, open = false;
+  const make = () => {
+    if (msg) return;
+    hideTypingIndicator();
+    msg = document.createElement('div'); msg.className = 'message pip streaming';
+    const who = document.createElement('div'); who.className = 'message-sender'; who.textContent = App.soul?.name || 'Resident';
+    textEl = document.createElement('div'); textEl.style.whiteSpace = 'pre-wrap';
+    msg.append(who, textEl); document.getElementById('conversation-area').appendChild(msg);
+  };
+  const scroll = () => { const area = document.getElementById('conversation-area'); area.scrollTop = area.scrollHeight; };
   return {
-    update(t) {
-      if (!msg) {
-        if (!t) return;
-        hideTypingIndicator();
-        msg = document.createElement('div'); msg.className = 'message pip streaming';
-        const who = document.createElement('div'); who.className = 'message-sender'; who.textContent = App.soul?.name || 'Resident';
-        textEl = document.createElement('div'); textEl.style.whiteSpace = 'pre-wrap';
-        msg.append(who, textEl); document.getElementById('conversation-area').appendChild(msg);
-      }
-      textEl.textContent = t.replace(/\uFFFD+$/, '') + ' ▍';                // a half-written emoji shows once it's whole
-      const area = document.getElementById('conversation-area'); area.scrollTop = area.scrollHeight;
+    // their reasoning, live, in a folded panel (tap to watch)
+    think(t) {
+      if (!t.trim()) return; make();
+      const next = thoughtPanel({ text: t.trim(), streaming: true }, open);
+      next.addEventListener('toggle', () => { open = next.open; });
+      if (panel) panel.replaceWith(next); else msg.insertBefore(next, textEl);
+      panel = next; scroll();
     },
+    update(t) {
+      if (!msg && !t) return; make();
+      if (panel && t) { const sm = panel.querySelector('summary'); if (sm) sm.textContent = sm.textContent.replace('Thinking…', 'Thought for'); }
+      textEl.textContent = t.replace(/\uFFFD+$/, '') + ' ▍';                // a half-written emoji shows once it's whole
+      scroll();
+    },
+    thoughtOpen: () => open,
     remove() { if (msg) msg.remove(); },
   };
 }
@@ -6268,7 +6387,8 @@ function renderRestored() {
   area.querySelectorAll('.message').forEach(el => el.remove());
   for (const m of App.memories.filter(m => m.type === 'conversation' && threadOf(m) === App.activeThread).slice(-20)) {
     addMessage(m.user, 'user', m.timestamp);
-    addMessage(m.response, 'pip', m.timestamp);
+    const r = m.reasoningAt && App.memories.find(x => x.type === 'reasoning' && x.timestamp === m.reasoningAt);
+    addMessage(m.response, 'pip', m.timestamp, r ? { thought: { text: r.text, conclusion: r.conclusion || '', private: r.shared === false } } : {});
   }
   const loopTypes = ['inner_voice', 'dream', 'self_prompt', 'reflection', 'memory', 'goal', 'consolidation', 'reasoning'];
   for (const m of App.memories.filter(m => loopTypes.includes(m.type)).slice(-20))

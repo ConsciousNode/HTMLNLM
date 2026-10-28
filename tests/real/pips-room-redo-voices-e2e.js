@@ -29,7 +29,7 @@ const [MODEL, SOUL] = process.argv.slice(2);
   await say('Hi Fazzani! What is your favorite color?');
   // streaming: their bubble fills in token by token, then becomes the finished message
   await p.evaluate(() => { window.__frames = []; const orig = streamBubble;
-    streamBubble = () => { const s = orig(); return { update: t => { const el = document.querySelector('.message.pip.streaming');
+    streamBubble = () => { const s = orig(); return { ...s, update: t => { const el = document.querySelector('.message.pip.streaming');
       if (el) __frames.push(el.children[1].textContent); s.update(t); }, remove: s.remove }; }; });
   await say('Tell me a little story about a frog.');
   const frames = await p.evaluate(() => __frames);

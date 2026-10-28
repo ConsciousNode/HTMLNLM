@@ -130,6 +130,18 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.18 — 2026-10-28 · Kehai Interim + Kham — clean-room thinking, and the thought panel
+
+- **The thought panel.** With thinking on, their reasoning sits in a folded panel on top of the reply it led to, closed until you tap it. While they think, it counts up live ("🤔 Thinking… 120 words"), and you can open it to watch. Restored conversations show their panels again (exchanges now record `reasoningAt`).
+- **Clean-room thinking** (developer console, on by default when thinking is on, except "quick").
+  - **Why:** the 0.4B reasons correctly from a clean state ("Kham has 4 cats and 2 dogs…" → step by step → 6). On top of a living state full of System lines, persona, loop thoughts and emoji, it reasons about the wrong thing or answers in another language. And "do you remember…" makes it reason about remembering itself.
+  - **How:** it now thinks in a fresh scratch state that holds only what matters: what Recall found, the previous exchange (only if it reads as real sentences), and your question asked plainly ("Tell me how many pets I have."). Everyone is named in the third person with your words quoted, because "Earlier I told you…" flipped who was who.
+  - **Afterwards:** only the conclusion goes into their living state (`System: … thought it over and concluded: …`), and they answer in their own voice. Tested: the reasoning never enters the state; one conclusion line, 47–80 tokens, does.
+  - **Status:** experimental. The mechanics are tested; better answers on the 0.4B aren't proven yet.
+- **A failed turn no longer freezes the room.** The error goes to Log & errors, the box comes back, and a toast says where to look. (Found by my own bug: a local variable shadowing `pipName()`.)
+- Conclusions are cleaned of markdown and "Answer:" labels.
+- Tests: `tests/real/pips-room-clean-room-e2e.js` (0.4B), and the redo/streaming test is updated.
+
 ### v1.17 — 2026-10-28 · Kehai Interim + Kham — streaming, documents, help, colors, and fixes from Jessica's phone test
 
 - **Replies stream in** token by token (the engine yields after every token; a ▍ cursor while writing). Developer console → *Stream replies*.
