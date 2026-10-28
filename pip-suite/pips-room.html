@@ -5125,24 +5125,60 @@ function plainQuestion(text) {
   if (!RECALL_CUES.test(text)) return text;
   const q = text.replace(RECALL_ASK, ' ').replace(/\s+/g, ' ').replace(/^[\s,?!.]+|[\s,?!.]+$/g, '');
   if (q.length < 3) return text;
-  return /^(how|what|which|who|where|when|why|whether|if)\b/i.test(q) ? `Tell me ${q}.` : `${q[0].toUpperCase()}${q.slice(1)}?`;
+  // already a question ("what was my…", "how many cats do I…"): ask it; an embedded one ("how many pets I have"): "Tell me …"
+  const asks = /^(how|what|which|who|where|when|why)\b/i.test(q), direct = /^(how|what|which|who|where|when|why)(\s+\w+)?\s+(is|are|was|were|do|does|did|can|will|would|should|have|has)\b/i.test(q);
+  return asks && !direct ? `Tell me ${q}.` : `${q[0].toUpperCase()}${q.slice(1)}?`;
+}
+// What you said, as a statement about you: "I have 4 cats and 2 dogs at my house!" → "Kham has 4 cats and 2 dogs at
+// Kham's house." The one setup the 0.4B reasoned cleanly from was facts stated plainly in the third person; quoting
+// your sentence made it "parse Kham's sentence" instead. Simple rules (I/my/me/I'm, the verb after "I"), no model time.
+const IRREG = { am: 'is', have: 'has', do: 'does', go: 'goes', was: 'was', were: 'was', "'m": 'is', "'ve": 'has', "'d": 'would', "'ll": 'will', can: 'can', will: 'will', would: 'would', could: 'could', should: 'should', must: 'must', might: 'might', did: 'did', had: 'had' };
+function thirdVerb(v) {
+  const l = v.toLowerCase();
+  if (l in IRREG) return IRREG[l];
+  if (/(ed|s)$/.test(l) && !/ss$/.test(l)) return v;                      // lived, likes: already fine
+  if (/(sh|ch|x|ss|z|o)$/.test(l)) return v + 'es';
+  if (/[^aeiou]y$/.test(l)) return v.slice(0, -1) + 'ies';
+  return v + 's';
+}
+function aboutYou(text, you) {
+  return text
+    .replace(/\b(do|did|am|was|were|have|had|can|could|will|would|should|shall|may|might|must)\s+I\b/gi, (m, a) =>   // "do I" → "does Kham"
+      `${{ do: 'does', am: 'is', were: 'was', have: 'has' }[a.toLowerCase()] || a} ${you}`)
+    .replace(/\bI(?=('m|'ve|'d|'ll)\b)('m|'ve|'d|'ll)/g, (m, a) => `${you} ${IRREG[a]}`)
+    .replace(/\bI\s+(don't|do not|didn't|can't|cannot|won't)\b/g, (m, a) => `${you} ${a === "don't" || a === 'do not' ? "doesn't" : a}`)
+    .replace(/\bI\s+([a-z]+)\b/g, (m, v) => `${you} ${thirdVerb(v)}`)
+    .replace(/\bI\b/g, you).replace(/\b[Mm]y\b/g, `${you}'s`).replace(/\bmine\b/g, `${you}'s`).replace(/\b[Mm]yself\b/g, you).replace(/\bme\b/g, you)
+    .replace(/!+/g, '.').replace(/\s+/g, ' ').trim();
+}
+// "Tell me which town I live in." → "Which town does Kham live in?"
+function questionAboutYou(q, you) {
+  const t = q.replace(/^tell me\s+/i, '').replace(/[.?!\s]+$/, '');
+  const m = t.match(/^(how many|how much|which|what|where|who|when|why|how)\b(.*?)\bI\s+([a-z']+)\b(.*)$/i);
+  if (m && /^(am|was|were|'m)$/i.test(m[3])) return `${m[1][0].toUpperCase()}${m[1].slice(1)}${m[2]} ${/^was|were$/i.test(m[3]) ? 'was' : 'is'} ${you}${m[4]}?`.replace(/\s+/g, ' ').replace(/ \?$/, '?');
+  if (m && /\s(do|does|did)\s*$/i.test(m[2])) {                    // "why do I like…": the do is already there
+    const aux = /did\s*$/i.test(m[2]) ? 'did' : 'does';
+    return `${m[1][0].toUpperCase()}${m[1].slice(1)}${m[2].replace(/\s(do|does|did)\s*$/i, '')} ${aux} ${you} ${m[3]}${m[4]}?`.replace(/\s+/g, ' ').replace(/ \?$/, '?');
+  }
+  if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1)}${m[2]} ${/^(was|did|have|had)$/i.test(m[3]) && !/^(how many|how much)$/i.test(m[1]) ? m[3] : 'does'} ${you} ${/^(was|did)$/i.test(m[3]) ? '' : m[3]}${m[4]}?`.replace(/\s+/g, ' ').replace(/ \?$/, '?');
+  const out = aboutYou(t, you);
+  return /^(how|what|which|who|where|when|why|is|are|was|does|do|did|can|will|would|if)\b/i.test(out) ? `${out[0].toUpperCase()}${out.slice(1)}?` : out + '.';
 }
 async function cleanRoomThink(text, items, onThink) {
   const tok = App.tokenizer, D = App.dev;
   // Names, third person, your words quoted: "Earlier I told you…" flipped who was who (she counted your pets twice:
-  // 14), while the same facts with names reasoned cleanly to 6.
-  const ctx = [], last = chats().slice(-1)[0], you = App.userName || 'My friend', n = App.soul?.name || 'Resident';
-  // the previous exchange only if it reads as real sentences: one garbled reply ("…David Khanḥit…") poisoned the
-  // next clean room ("David and Khanḥit are talking about their cats")
-  if (last && meaningful(last.response) && meaningful(last.user + ' ' + last.response)) ctx.push(`Just now, ${you} said: "${clip(oneLine(last.user), 200)}" and ${n} replied: "${clip(oneLine(last.response), 200)}"`);
+  // 14). And nothing else: on a 0.4B any extra context becomes "the problem". With the previous exchange in the
+  // room, even "4 cats + 3 more" turned into reasoning about that exchange. So: only what you said that Recall
+  // found (their replies left out), the passage from a document, and your question.
+  const ctx = [], you = App.userName || 'My friend', n = App.soul?.name || 'Resident';
   for (const m of items || []) {
-    if (m.type === 'conversation') ctx.push(`Earlier, ${you} said: "${clip(oneLine(m.user), 240)}" and ${n} replied: "${clip(oneLine(m.response), 160)}"`);
+    if (m.type === 'conversation') ctx.push(aboutYou(clip(oneLine(m.user), 240), you).replace(/([^.?])$/, '$1.'));
     else if (m.type === 'document') ctx.push(`From the document "${m.doc}": "${clip(oneLine(m.text), 500)}"`);
-    else if (m.type === 'consolidation') ctx.push(`${n} remembers: "${clip(oneLine(m.text), 220)}"`);
+    else if (m.type === 'consolidation' && meaningful(m.text)) ctx.push(`${n} remembers: "${clip(oneLine(m.text), 220)}"`);
   }
   const TL = { bit: ' (think a bit)', think: ' (think)', lot: ' (think a lot)' }[D.thinkLength] ?? ' (think)';
-  const q = plainQuestion(text).replace(/\s*\n+\s*/g, ' ').trim().replace(/"/g, "'");
-  const prompt = `User: ${ctx.length ? ctx.join('\n') + '\n' : ''}${you} asks ${n}: "${q}"${TL}\n\nAssistant: <think`;
+  const q = questionAboutYou(plainQuestion(text).replace(/\s*\n+\s*/g, ' ').trim(), you);
+  const prompt = `User: ${ctx.length ? ctx.join(' ') + ' ' : ''}${q}${TL}\n\nAssistant: <think`;
   const ids = tok.encode(prompt);
   let st = App.model.getEmptyState(), r = null;
   for (let i = 0; i < ids.length; i++) { r = App.model.forward(ids[i], st); st = r.state; if (i % 8 === 7) { setSoulConsole(`Thinking it over... reading ${Math.round(100 * i / ids.length)}%`); await yieldToMain(); } }
@@ -5282,11 +5318,12 @@ function ensureThreads() {
 // Is a summary worth handing on as a memory? A small model's summary can come out as emoji soup
 // ("🌞️ How do you like… 🌞️ How… 🐛️ How…"). Handed to a new thread as "things she remembers", it was copied
 // straight into her thoughts (reproduced with Jessica, 0.1B Q4). Kept in the journal, never used as memory.
-// Needs 4+ words, mostly different ones, mostly letters, and no broken characters.
+// Needs 4+ words, mostly different ones, none absurdly long, mostly letters, and no broken characters.
 function meaningful(t) {
   t = t || ''; if (t.includes('\uFFFD')) return false;
   const words = t.toLowerCase().match(/[\p{L}\p{N}']+/gu) || [];
   if (words.length < 4 || new Set(words).size / words.length < 0.6) return false;
+  if (words.some(w => w.length > 24)) return false;            // "SomehowSoftanorilarkindíciamente…" isn't a word
   const letters = (t.match(/[\p{L}\p{N}]/gu) || []).length, visible = t.replace(/\s/g, '').length;
   return letters / Math.max(1, visible) >= 0.6;
 }
