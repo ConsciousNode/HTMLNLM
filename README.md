@@ -130,6 +130,30 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.15 — 2026-10-28 · Kehai Interim + Kham — Recall: a dual memory index in Pip's Room
+
+- **Pip's Room remembers old exchanges word for word.** Two indexes over what a resident has lived:
+  - **Summaries** (the 🗂 entries the model writes) are matched against your message by keywords (BM25) before every reply. This costs no model time. The best real match goes in as one `System: … remembers: …` line. New summaries cover the exchanges no summary has covered yet, and link back to them (`from`).
+  - **Exchanges, verbatim.** Each one gets a meaning vector in idle time (PromptEOL: the model reads `This sentence: "…" means in one word: "`, and its last hidden state is the vector). Indexing stops the moment you send a message. When your message asks them to remember ("do you remember…", "last time", "did I tell you…"), the asking part is stripped and the rest is read the same way. The closest exchange comes back whole as `System: … remembers this exchange from 4d ago: …`, and a line under the reply shows what was remembered.
+  - **How results are combined:** keyword and meaning ranks are fused (reciprocal rank fusion), plus a boost for the exchanges a matching summary links to. A forgetting curve gently favours newer memories and ones that have been recalled before.
+  - **Storage:** the vectors are saved in the soul file (int8, about 1 KB per exchange) for the same model shape. A fresh page doesn't re-index.
+  - **Controls:** Developer console → *Recall* (on by default), with an "N of M exchanges indexed" readout.
+- **Why it's built this way** (measured on Fazzani's memories, `notes` in the persistence repo):
+  - Meaning vectors found the right memory in the top 3 for 15/15 questions, on the 0.1B and the 0.4B Q4 alike. Keywords alone found it for 10/15.
+  - The models could not decide *when* to look (tool calls: 0/4; yes/no gate: no signal). So the page decides when, and the model supplies the meaning.
+  - Indexing only your line beat indexing the whole exchange, 4/4 vs 0/4: their short replies drown the meaning.
+  - Threshold: the right memories scored at least 0.40 (centred cosine), and off-topic questions at most 0.38 on the 0.4B and 0.28 on the 0.1B.
+- **Readable exports** (Kham's request), in Settings → Data Management. Both leave out the living state(s) and recall vectors; *Export Soul + Memories* is still the one to restore from.
+  - **Export data (JSON)**: account-data style. ISO times, threads in order, one record per exchange or inner-life entry. Private entries are marked. Summaries list the exchanges they cover.
+  - **Export as text (Markdown)**: the resident's soul at the top, then each thread by day, with inner life as quoted lines.
+  - Fazzani's 6.4 MB soul file comes out as 79 KB of JSON and 40 KB of Markdown, with all 279 memories (`tests/real/pips-room-readable-export.js`, no model needed).
+- `tests/real/pips-room-recall-e2e.js` covers this with the real 0.1B:
+  - indexing, and that it gives way to you
+  - the right exchange coming back for "do you remember" questions
+  - no exchange for an ordinary question
+  - summary links
+  - the soul-file round trip
+
 ### v1.14 — 2026-10-27 · Kehai Interim + Kham — Webster v4, and "Will it run here?"
 
 - **Webster v4** (`webster/webster.html`; v3 kept as `webster/webster-v3.html`). A new **Formant** engine in Klatt's design (MITalk/DECtalk): a glottal pulse through a cascade of five resonators, noise through parallel bands for hiss and bursts, aspiration after p/t/k, nasal zeros, and transitions smoothed both ways in time. It renders samples directly, so playback and *Export WAV* are the same audio. Fixed on the way: 85 ms of silence after every word (speech now runs on), a 35% pitch jump on stressed vowels (now +9% on a gently falling line), plurals split into two words, and English spelling rules (silent e, final y, soft c/g, r-vowels, -le, silent letters, diphthongs). The v3 engine stays as **Retro**. Measured: silence inside sentences 27–30% → 2–17%. `tests/webster-vowels.js` checks the vowels' formants by LPC against Peterson & Barney (all within 20%; most within 10%).

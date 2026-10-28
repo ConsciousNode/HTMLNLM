@@ -24,6 +24,8 @@ node --max-old-space-size=3000 tests/real/repetition.js rwkv7-g1d-0.1b.pth 0   7
 node --max-old-space-size=3000 tests/real/repetition.js rwkv7-g1d-0.1b.pth 0.4 7 8
 # Pip's Room in headless Chromium with the real checkpoint (needs Playwright)
 node tests/real/pips-room-e2e.js rwkv7-g1d-0.1b.pth
+# Recall (dual memory index): idle indexing, "do you remember" brings back the right exchange, soul-file round trip
+node tests/real/pips-room-recall-e2e.js rwkv7-g1d-0.1b.pth fazzani_soul.json
 ```
 
 Score = repeated 4-word phrases across the chat (an exact-line count missed the real failure: near-identical lines that differ by a word). Results on 2026-10-22, 8 turns: seed 7 32% → 0%, seed 23 3% → 0%, seed 11 0% → 0%.

@@ -393,6 +393,14 @@ header h1 {
   color: var(--text-main);
 }
 
+.message-recall {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
 .message-timestamp {
   font-size: 10px;
   color: var(--text-muted);
@@ -1187,6 +1195,10 @@ header h1 {
       <div class="settings-row">
         <button class="settings-btn primary" id="export-btn">Export Soul + Memories</button>
       </div>
+      <div class="settings-row" title="Everything except the living state(s) and recall vectors: small files for reading, not for restoring">
+        <button class="settings-btn" id="export-data-btn">Export data (JSON)</button>
+        <button class="settings-btn" id="export-text-btn">Export as text (Markdown)</button>
+      </div>
       <div class="settings-row">
         <button class="settings-btn" id="import-btn">Import Archive</button>
       </div>
@@ -1207,6 +1219,7 @@ header h1 {
         <div id="dev-fields"></div>
         <div class="settings-row"><span>Living memory <small id="live-info">not started</small></span>
           <button class="settings-btn" id="live-forget" title="Throw away the RWKV state and settle in again from the soul and recent conversation">Start fresh</button></div>
+        <div class="settings-row"><span>Recall <small id="recall-info">off</small></span></div>
         <div class="settings-row"><button class="settings-btn" id="dev-reset">Reset to defaults</button></div>
         <div class="dev-label">Last prompt sent <small>(exactly what the model saw)</small></div>
         <pre id="dev-prompt"></pre>
@@ -4437,6 +4450,7 @@ function updateMemoryStats() {
   const storage = estimateStorage();
   document.getElementById('setting-storage').textContent = storage;
   
+  updateRecallInfo();
   if (App.lastConsolidated) {
     document.getElementById('last-consolidated').textContent = formatTimeAgo(App.lastConsolidated);
   }
@@ -4564,21 +4578,22 @@ async function handleUserMessage() {
   
   addMessage(text, 'user');
   
+  showTypingIndicator();
+  App.isGenerating = true;
+  while (App.loopBusy) await new Promise(r => setTimeout(r, 200));   // let a running loop finish first
+  const rec = await recallFor(text).catch(e => { console.warn('recall failed:', e); return { lines: '', notes: [] }; });
   const pipName = App.soul?.name || 'Resident';
   const you = userLabel();
   let prompt = `${pipName} is having a conversation.\nUser: ${text}\n${pipName}:`;
   if (App.kind === 'rwkv7') {
     // real models can follow a conversation: system block, the last few exchanges, then you
     const recent = App.dev.contextTurns > 0 ? chats().slice(-App.dev.contextTurns) : [];
-    prompt = systemBlock() +
+    prompt = systemBlock() + rec.lines +
       recent.map(m => `${you}: ${m.user}\n${pipName}: ${m.response}\n`).join('') + `${you}: ${text}\n${pipName}:`;
   }
-  if (liveOn()) prompt = `${you}: ${text}\n${pipName}:`;            // living memory: only what's new
+  if (liveOn()) prompt = rec.lines + `${you}: ${text}\n${pipName}:`;            // living memory: only what's new
   App.lastPrompt = prompt; refreshPromptView();
   
-  showTypingIndicator();
-  App.isGenerating = true;
-  while (App.loopBusy) await new Promise(r => setTimeout(r, 200));   // let a running loop finish first
   
   const startTime = Date.now();
   let response;
@@ -4589,7 +4604,7 @@ async function handleUserMessage() {
     // "Assistant: <think"): with name labels a 0.1B gets lost; with these it reasons. Who they are
     // is carried by the System lines, and the answer may run several lines (it ends at a blank line).
     const TL = { bit: ' (think a bit)', think: ' (think)', lot: ' (think a lot)', quick: '' }[App.dev.thinkLength] ?? ' (think)';
-    const fedPrompt = thinking ? `\nUser: ${text.replace(/\n{2,}/g, '\n').trim()}${TL}\n\nAssistant:` : prompt;
+    const fedPrompt = thinking ? `\n${rec.lines}User: ${text.replace(/\n{2,}/g, '\n').trim()}${TL}\n\nAssistant:` : prompt;
     const t = await liveTurn(fedPrompt, thinking ? App.dev.maxTokens * 2 : App.dev.maxTokens, App.dev.temperature,
                              { think: thinking, quickThink: thinking && App.dev.thinkLength === 'quick', endOn: thinking ? '\n\n' : '\n' });
     response = t.text;
@@ -4605,6 +4620,7 @@ async function handleUserMessage() {
   
   hideTypingIndicator();
   addMessage(response, 'pip');
+  showRecallNote(rec.notes);
   if (App.dev.speak) WebsterVoice.speak(response, { preset: App.dev.voice });   // Webster: said aloud, offline
   
   App.memories.push({
@@ -4639,7 +4655,7 @@ async function handleUserMessage() {
 // ── Settings for the voice (the developer console edits these; saved with the soul) ──
 const DEV_DEFAULTS = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996,
                        maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true, livingMemory: true,
-                       think: false, thinkTokens: 400, thinkLength: 'think', speak: false, voice: 'female', bridgeCount: 3, bridgeChars: 200 };
+                       think: false, thinkTokens: 400, thinkLength: 'think', speak: false, voice: 'female', bridgeCount: 3, bridgeChars: 200, recall: true };
 App.dev = { ...DEV_DEFAULTS };
 App.userName = '';           // what the resident calls you; empty = "friend" in the prompt, "User" as the label
 App.about = '';              // a free note prepended to every conversation
@@ -4762,11 +4778,11 @@ function buildDevConsole() {
     sel.value = App.dev.voice || 'female';
     sel.onchange = () => { App.dev.voice = sel.value; if (App.dev.speak) { WebsterVoice.stop(); WebsterVoice.speak('Hello, this is my voice.', { preset: sel.value }); } };
     row.appendChild(sel); box.appendChild(row); }
-  for (const [key, label] of [['think', 'Think before answering (uses the model\'s own User:/Assistant: format for that turn; reasoning goes to the journal; needs living memory)'], ['livingMemory', 'Living memory (keep the RWKV state between turns)'], ['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
+  for (const [key, label] of [['think', 'Think before answering (uses the model\'s own User:/Assistant: format for that turn; reasoning goes to the journal; needs living memory)'], ['livingMemory', 'Living memory (keep the RWKV state between turns)'], ['recall', 'Recall (search summaries every reply; bring back an old exchange word for word when asked to remember)'], ['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
     const row = document.createElement('label'); row.className = 'dev-row dev-check';
     row.innerHTML = `<span>${label}</span>`;
     const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!App.dev[key];
-    inp.onchange = () => { App.dev[key] = inp.checked; refreshPromptView(); };
+    inp.onchange = () => { App.dev[key] = inp.checked; refreshPromptView(); updateRecallInfo(); };
     row.appendChild(inp); box.appendChild(row);
   }
 }
@@ -4775,7 +4791,7 @@ function refreshPromptView() {
   pre.textContent = App.lastPrompt || (App.soul ? systemBlock() + `${userLabel()}: …\n${App.soul.name}:` : '(wake someone up first)');
 }
 function syncSoulFields() {
-  updateLiveInfo();
+  updateLiveInfo(); updateRecallInfo();
   document.getElementById('user-name').value = App.userName || '';
   if (App.genesisDate) document.getElementById('setting-genesis').textContent = new Date(App.genesisDate).toLocaleDateString();
   document.getElementById('setting-conversations').textContent = App.conversationCount || 0;
@@ -5010,6 +5026,179 @@ function crossThreadMemory() {
     .slice(-(App.dev.bridgeCount ?? 3) || Infinity).map(m => clip(m.text, App.dev.bridgeChars ?? 200));   // 0 = none (slice(Infinity) is empty)
   return sums.length ? `System: Things ${n} remembers from other conversations: ${sums.join(' / ')}\n` : '';
 }
+// ── Recall: a dual memory index ──────────────────────────────────────────────────
+// Two indexes over what they've lived, so an old exchange can come back word for word:
+//  • Summaries: the 🗂 entries the model writes about its own conversations. Each one links back to the
+//    exchanges it summarizes. Before every reply your message is matched against them by keywords
+//    (BM25, no model time), and the best match, if it really matches, goes in as one System line.
+//  • Exchanges, verbatim: each one gets a meaning vector, made in idle time. The model reads
+//    `This sentence: "…" means in one word: "` and its last hidden state is the vector (PromptEOL).
+//    When your message asks them to remember ("remember", "last time", "did I tell you"…), it is read
+//    the same way and the closest exchange comes back whole. A summary match also brings back its own
+//    linked exchanges, at no model cost.
+// Measured on Fazzani's 121 memories with the G1 0.1B: meaning vectors put the right memory in the top 3
+// for 15/15 questions, keywords alone for 10/15. What the model could NOT do was decide when to look
+// (tool calls 0/4, no usable yes/no signal), so the page decides when and the model supplies the meaning.
+// Older, never-recalled memories weigh a little less (a forgetting curve); each recall makes one stickier.
+App.recall = null;          // { print, dim, vecs: { key: 'base64 int8' }, scale: { key }, uses: { key: { n, last } } }
+App.recallRecent = [];      // keys brought back in the last few turns (not repeated)
+const RECALL_CUES = /\b(remember|recall|remind|forg[eo]t|last time|earlier|before|yesterday|the other day|you said|you told|i told you|did i (tell|say|mention)|we (talked|spoke|discussed|said)|what was|what did|do you know (my|what|where|who|when|how)|my (name|dog|cat|wife|husband|partner|kids?|son|daughter|mom|dad|town|job|pets?|favou?rite|birthday))\b/i;
+const RECALL_TEMPLATE = t => `This sentence: "${t}" means in one word: "`;
+const RECALL_MIN_COS = 0.40;      // centred cosine. 0.1B: right memories 0.44-0.63, off-topic 0.28. 0.4B Q4 (121 memories): right 0.40-0.64, off-topic 0.26-0.38
+const RECALL_MIN_SUMMARY = 3.0;   // BM25; on Fazzani's set off-topic questions score 0 (one 2.7), real ones 1.8-11
+const recallOn = () => App.kind === 'rwkv7' && App.dev.recall !== false && !!App.model?.forward;
+const memKey = m => `${m.type}:${m.timestamp}`;
+function memText(m) {
+  if (m.type === 'conversation') return `${userLabel()}: ${m.user} / ${pipName()}: ${m.response}`;
+  return m.text || '';
+}
+// Only exchanges get vectors, and only from your line: tested on Fazzani's exchanges, your line alone found the
+// right one 4/4 (centred cosine 0.44-0.63, an off-topic question 0.28); the whole exchange 0/4 (their short
+// replies, "Here we are.", drown the meaning). Summaries are found by keywords instead.
+const recallable = () => App.memories.filter(m => m.type === 'conversation' && (m.user || '').trim());
+// "Do you remember how many pets I have?" → "how many pets I have": the asking-to-remember part says nothing
+// about which memory, and it pulls every question toward the same place.
+const RECALL_ASK = /\b(?:(?:do|can|could|would|did) you (?:still |even )?(?:remember|recall|know)|remember(?:ing)?|recall|remind me(?: of| about)?|again|did i (?:ever )?(?:tell|say|mention)(?: to)?(?: you)?|i (?:told|said to) you|you (?:said|told me)|last time|the other day|earlier)\b/gi;
+const recallQuery = t => { const q = t.replace(RECALL_ASK, ' ').replace(/[?!.,;:]+/g, ' ').replace(/\s+/g, ' ').trim(); return q.length >= 3 ? q : t; };
+function ensureRecall() {
+  const print = modelPrint();
+  if (!App.recall || App.recall.print !== print) App.recall = { print, dim: App.model?.C || 0, vecs: {}, scale: {}, uses: App.recall?.uses || {} };
+  return App.recall;
+}
+// int8 + one scale per vector: ~1 KB per memory for a 0.4B instead of 4 KB
+function packVec(v) {
+  let mx = 0; for (const x of v) mx = Math.max(mx, Math.abs(x));
+  const s = mx / 127 || 1, q = new Int8Array(v.length);
+  for (let i = 0; i < v.length; i++) q[i] = Math.round(v[i] / s);
+  let bin = ''; const u = new Uint8Array(q.buffer); for (let i = 0; i < u.length; i++) bin += String.fromCharCode(u[i]);
+  return { b64: btoa(bin), s };
+}
+function unpackVec(b64, s) {
+  const bin = atob(b64), q = new Int8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) q[i] = (bin.charCodeAt(i) << 24) >> 24;
+  return Float32Array.from(q, x => x * s);
+}
+// Read `text` from a blank state (the living state is not touched) and return the last hidden state.
+// Returns null if `stop()` says to give up (they've been spoken to) or the engine has no hidden output.
+async function embedForRecall(text, stop) {
+  const ids = App.tokenizer.encode(RECALL_TEMPLATE(clip(text.replace(/\s+/g, ' ').replace(/"/g, "'"), 300)));
+  let st = App.model.getEmptyState(), r = null;
+  for (let i = 0; i < ids.length; i++) {
+    r = App.model.forward(ids[i], st); st = r.state;
+    if (i % 4 === 3) { await yieldToMain(); if (stop && stop()) return null; }
+  }
+  return r?.cache?.xo ? Float32Array.from(r.cache.xo) : null;
+}
+// Idle-time work: give one memory its vector. Gives up the moment you send a message.
+async function indexOneMemory() {
+  if (!recallOn()) return false;
+  const R = ensureRecall(), m = recallable().find(m => !R.vecs[memKey(m)]);
+  if (!m) return false;
+  const v = await embedForRecall(m.user, () => App.isGenerating);
+  if (!v) return false;
+  const p = packVec(v); R.vecs[memKey(m)] = p.b64; R.scale[memKey(m)] = p.s;
+  updateRecallInfo();
+  return true;
+}
+function updateRecallInfo() {
+  const el = document.getElementById('recall-info'); if (!el) return;
+  if (!recallOn()) { el.textContent = 'off'; return; }
+  const all = recallable().length, R = App.recall && App.recall.print === modelPrint() ? App.recall : null;
+  const done = R ? recallable().filter(m => R.vecs[memKey(m)]).length : 0;
+  el.textContent = `${done} of ${all} exchanges indexed` + (done < all ? ' (the rest fill in while they\'re idle)' : '');
+}
+// Plain BM25 over a list of texts (k1 1.2, b 0.75), light stemming, common words ignored.
+const RECALL_STOP = new Set('the a an of to and or in on at is it as for with by from be was were are am but that this i you me my your we our he she they do does did what how which who where can could would will about just so if not no yes oh ok okay really very too also there their them then than have has had its im youre dont remember recall told tell said say last time earlier'.split(' '));
+const recallWords = t => (t.toLowerCase().match(/[a-z0-9]+/g) || []).filter(w => !RECALL_STOP.has(w)).map(w => w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);
+function bm25Scores(query, texts) {
+  const D = texts.map(recallWords), N = D.length, avg = D.reduce((s, d) => s + d.length, 0) / Math.max(1, N), df = new Map();
+  for (const d of D) for (const w of new Set(d)) df.set(w, (df.get(w) || 0) + 1);
+  const q = [...new Set(recallWords(query))];
+  return D.map(d => { let s = 0; for (const w of q) { const n = df.get(w); if (!n) continue;
+    let f = 0; for (const x of d) if (x === w) f++; if (!f) continue;
+    s += Math.log(1 + (N - n + 0.5) / (n + 0.5)) * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * d.length / avg)); } return s; });
+}
+// Forgetting curve: retention falls with age, more slowly for memories that have been recalled before.
+function retention(m) {
+  const u = App.recall?.uses?.[memKey(m)], days = (Date.now() - (u?.last || m.timestamp)) / 864e5;
+  return Math.exp(-days / (14 * (1 + (u?.n || 0))));
+}
+const oneLine = t => (t || '').replace(/\s*\n+\s*/g, ' ').trim();
+// What to remember before answering `text`. Returns { lines, notes } (lines go into the prompt as System lines).
+async function recallFor(text) {
+  const out = { lines: '', notes: [] }, t0 = Date.now();
+  if (!recallOn() || !App.soul) return out;
+  const n = pipName(), you = userLabel(), R = ensureRecall();
+  const inContext = new Set(chats().slice(-Math.max(1, App.dev.contextTurns || 0)).map(memKey));
+  const fresh = k => !inContext.has(k) && !App.recallRecent.includes(k);
+  const picked = [];
+  // 1. summaries, by keywords, every reply
+  const sums = App.memories.filter(m => m.type === 'consolidation' && m.shared !== false && (m.text || '').trim());
+  let sumHit = null;
+  if (sums.length) {
+    const sc = bm25Scores(text, sums.map(m => m.text));
+    let bi = -1; sc.forEach((s, i) => { if (s >= RECALL_MIN_SUMMARY && (bi < 0 || s * (0.7 + 0.3 * retention(sums[i])) > sc[bi] * (0.7 + 0.3 * retention(sums[bi])))) bi = i; });
+    if (bi >= 0) sumHit = sums[bi];
+  }
+  // 2. exchanges, verbatim: when asked to remember (meaning vectors), or through the summary's links (keywords)
+  const ex = App.memories.filter(m => m.type === 'conversation' && fresh(memKey(m)));
+  const cue = RECALL_CUES.test(text);
+  let best = null;
+  if (ex.length && (cue || sumHit?.from?.length)) {
+    const kw = bm25Scores(text, ex.map(memText));
+    const rank = arr => { const o = arr.map((s, i) => [s, i]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]); const r = new Map(); o.forEach(([, i], k) => r.set(i, k)); return r; };
+    const fused = new Float64Array(ex.length);
+    const rk = rank(kw); rk.forEach((k, i) => fused[i] += 1 / (60 + k));
+    const linked = new Set(sumHit?.from || []);
+    ex.forEach((m, i) => { if (linked.has(memKey(m))) fused[i] += 1 / 61; });
+    let cos = null;
+    const withVec = ex.map(m => R.vecs[memKey(m)] ? m : null);
+    if (cue && withVec.some(Boolean)) {
+      setSoulConsole('Remembering...');
+      const q = await embedForRecall(recallQuery(text));
+      setSoulConsole('');
+      if (q) {
+        // centre on the mean of everything indexed (all these vectors share one big common direction)
+        const keys = Object.keys(R.vecs).filter(k => k.startsWith('conversation:')), mu = new Float64Array(q.length);
+        const vec = k => unpackVec(R.vecs[k], R.scale[k]);
+        if (keys.length >= 20) { for (const k of keys) { const v = vec(k); for (let j = 0; j < v.length; j++) mu[j] += v[j] / keys.length; } }
+        const cen = v => { const c = new Float64Array(v.length); let nn = 0; for (let j = 0; j < v.length; j++) { c[j] = v[j] - mu[j]; nn += c[j] * c[j]; } nn = Math.sqrt(nn) || 1; for (let j = 0; j < c.length; j++) c[j] /= nn; return c; };
+        const qc = cen(q);
+        cos = withVec.map(m => { if (!m) return -1; const d = cen(vec(memKey(m))); let s = 0; for (let j = 0; j < d.length; j++) s += d[j] * qc[j]; return s; });
+        rank(cos.map(c => c + 1)).forEach((k, i) => fused[i] += 1 / (60 + k));
+      }
+    }
+    // good enough? its meaning is close (centred cosine; with < 20 indexed there's no mean yet, so the ranking decides),
+    // or the keywords match strongly, or it's one the matching summary points to. Best of those wins.
+    const few = Object.keys(R.vecs).length < 20, topCos = cos ? Math.max(...cos) : -1;
+    const good = i => (cos && cos[i] > -1 && (few ? cos[i] === topCos : cos[i] >= RECALL_MIN_COS)) || kw[i] >= RECALL_MIN_SUMMARY || linked.has(memKey(ex[i]));
+    let bi = -1;
+    ex.forEach((m, i) => { const f = fused[i] * (0.8 + 0.2 * retention(m)); if (f > 0 && good(i) && (bi < 0 || f > fused[bi] * (0.8 + 0.2 * retention(ex[bi])))) bi = i; });
+    if (bi >= 0) best = ex[bi];
+  }
+  if (sumHit && fresh(memKey(sumHit)) && !(best && sumHit.from?.includes(memKey(best)))) {
+    out.lines += `System: ${n} remembers: ${clip(oneLine(sumHit.text), 220)}\n`; picked.push(sumHit);
+    out.notes.push(`🗂 ${clip(oneLine(sumHit.text), 80)}`);
+  }
+  if (best) {
+    out.lines += `System: ${n} remembers this exchange from ${formatTimeAgo(best.timestamp)}: ${you}: "${clip(oneLine(best.user), 200)}" ${n}: "${clip(oneLine(best.response), 200)}"\n`;
+    picked.push(best); out.notes.push(`💬 "${clip(oneLine(best.user), 60)}" (${formatTimeAgo(best.timestamp)})`);
+  }
+  for (const m of picked) { const k = memKey(m), u = R.uses[k] || { n: 0 }; u.n++; u.last = Date.now(); R.uses[k] = u; }
+  App.recallRecent = [...App.recallRecent, ...picked.map(memKey)].slice(-6);
+  App.lastRecallMs = Date.now() - t0;
+  return out;
+}
+function showRecallNote(notes) {
+  if (!notes?.length) return;
+  const msg = [...document.querySelectorAll('#conversation-area .message.pip')].at(-1); if (!msg) return;
+  const el = document.createElement('div'); el.className = 'message-recall';
+  el.textContent = 'remembered: ' + notes.join(' · ');
+  msg.insertBefore(el, msg.lastChild);
+}
+// soul file: vectors travel with the memories (only valid for the same model shape)
+function exportRecall() { return App.recall && Object.keys(App.recall.vecs).length ? App.recall : (App.recall?.uses ? { print: '', vecs: {}, scale: {}, uses: App.recall.uses } : null); }
+
 function threadBusy() {
   if (App.isGenerating || App.loopBusy) { showToast('One moment: they\'re in the middle of a thought', 'info'); return true; }
   return false;
@@ -5310,9 +5499,12 @@ async function loopGoal() {
   return g;
 }
 async function loopConsolidate() {
-  const recent = chats().slice(-3);
-  App.lastConsolidated = Date.now();
+  // the exchanges no summary covers yet (up to 4), so every summary links back to what it's about
+  const covered = new Set(App.memories.filter(m => m.type === 'consolidation').flatMap(m => m.from || []));
+  const recent = chats().filter(m => !covered.has(memKey(m))).slice(-4);
+  App.lastConsolidated = Date.now(); App.consolidateFrom = null;
   if (!recent.length) return null;
+  App.consolidateFrom = recent.map(memKey);
   const text = recent.map(m => `${m.user} / ${m.response}`).join(' ');
   return selfResponse(`Summarizing what we talked about: ${clip(text, 200)} In brief:`, 50, 0.7);
 }
@@ -5414,7 +5606,14 @@ async function runDueLoop() {
   const due = Object.keys(LOOPS)
     .filter(k => App.loopStates[k] && now - (App.loopLast[k] || 0) >= LOOPS[k].every)
     .sort((a, b) => (App.loopLast[a] || 0) - (App.loopLast[b] || 0));
-  if (!due.length) return;
+  if (!due.length) {                                          // nothing due: quietly index memories for recall
+    if (!recallOn()) return;
+    App.loopBusy = true;
+    try { const t = Date.now(); while (Date.now() - t < 30000 && !App.isGenerating && await indexOneMemory()); }
+    catch (e) { console.warn('recall index failed:', e); }
+    finally { App.loopBusy = false; }
+    return;
+  }
   const key = due[0], loop = LOOPS[key];
   App.loopLast[key] = now; App.loopBusy = true; App.currentLoopType = loop.type;
   const ind = document.querySelector(`.loop-indicator[data-loop="${key}"]`);
@@ -5424,7 +5623,8 @@ async function runDueLoop() {
     if (out) {
       const shared = loop.share();
       growSoul(loop.type, '', out);
-      App.memories.push({ thread: App.activeThread, type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral' });
+      App.memories.push({ thread: App.activeThread, type: loop.type, text: out, shared, timestamp: Date.now(), mood: App.soul?.mood || 'neutral',
+                          ...(loop.type === 'consolidation' && App.consolidateFrom ? { from: App.consolidateFrom } : {}) });
       addInnerLifeEntry(loop.type, shared ? out : `(${pipName()} kept this one private)`, shared ? {} : { private: true });
       noteNewInnerLife();
       if (journalOpen()) renderJournal();
@@ -5492,6 +5692,7 @@ async function exportSoul() {
     dev: App.dev,
     threads: (stashActiveThread(), App.threads),
     activeThread: App.activeThread,
+    recall: exportRecall(),
     exportedAt: Date.now()
   };
   
@@ -5504,6 +5705,76 @@ async function exportSoul() {
   URL.revokeObjectURL(url);
   
   showToast('Soul exported!', 'success');
+}
+
+// ── Readable exports: everything except the living state(s) and recall vectors ──
+// The soul file is for restoring; these are for looking at. The states (MBs each) and vectors are left out,
+// so the files stay small. JSON for machines (ISO times, one record per entry, threads in order), Markdown for people.
+// Private entries are included and marked: this is your own copy, the same things the journal shows when tapped.
+const INNER_NAMES = { inner_voice: 'thought', dream: 'dream', self_prompt: 'wondering', reflection: 'reflection',
+                      memory: 'memory', goal: 'goal', consolidation: 'summary', reasoning: 'thinking' };
+const iso = t => t ? new Date(t).toISOString() : null;
+function buildDataExport() {
+  const n = pipName(), you = App.userName || 'User';
+  ensureThreads();
+  const recall = App.recall?.print === modelPrint() ? App.recall : null;
+  const threads = App.threads.map(t => {
+    const mine = App.memories.filter(m => threadOf(m) === t.id).sort((a, b) => a.timestamp - b.timestamp);
+    return {
+      id: t.id, title: t.title, created: iso(t.created), lastActive: iso(t.lastActive),
+      livingStateTokens: (t.id === App.activeThread && App.live ? App.live.tokens : t.live?.tokens) || 0,
+      entries: mine.map(m => m.type === 'conversation'
+        ? { time: iso(m.timestamp), kind: 'exchange', you: m.user, [n]: m.response, mood: m.mood,
+            ...(recall ? { indexed: !!recall.vecs[memKey(m)], timesRecalled: recall.uses[memKey(m)]?.n || 0 } : {}) }
+        : { time: iso(m.timestamp), kind: INNER_NAMES[m.type] || m.type, text: m.text, private: m.shared === false, mood: m.mood,
+            ...(m.about ? { about: m.about } : {}), ...(m.from ? { covers: m.from.map(k => iso(+k.split(':')[1])) } : {}) }),
+    };
+  });
+  return {
+    format: 'pips-room-data', version: 1, exportedAt: iso(Date.now()),
+    note: 'Readable export. The living state(s) and recall vectors are left out; use "Export Soul + Memories" to back up or restore.',
+    resident: { name: n, genesis: iso(App.genesisDate || App.soul?.genesisDate), mood: App.soul?.mood, traits: App.soul?.traits,
+                values: App.soul?.values, goals: App.soul?.goals },
+    you: you, about: App.about || '',
+    stats: { exchanges: App.memories.filter(m => m.type === 'conversation').length, memories: App.memories.length,
+             conversations: App.conversationCount, tokensGenerated: App.tokensGenerated, model: modelPrint() || null },
+    settings: App.dev, activeThread: App.activeThread, threads,
+  };
+}
+function dataExportMarkdown(d) {
+  const n = d.resident.name, q = t => (t || '').replace(/\n/g, '\n> ');
+  const when = t => t ? new Date(t).toLocaleString() : '';
+  const L = [`# ${n}`, '', `Exported ${when(d.exportedAt)} from Pip's Room. Living state(s) not included.`, ''];
+  if (d.resident.genesis) L.push(`- **Born:** ${when(d.resident.genesis)}`);
+  if (d.resident.mood) L.push(`- **Mood:** ${d.resident.mood}`);
+  if (d.resident.traits) L.push(`- **Traits:** ${Object.entries(d.resident.traits).map(([k, v]) => `${k} ${(+v).toFixed(2)}`).join(', ')}`);
+  if (d.resident.values?.length) L.push(`- **Values:** ${d.resident.values.join(', ')}`);
+  if (d.resident.goals?.length) L.push(`- **Goals:** ${d.resident.goals.map(g => oneLine(g)).join('; ')}`);
+  L.push(`- **Talking with:** ${d.you}`, `- **Exchanges:** ${d.stats.exchanges} · **memories:** ${d.stats.memories}`);
+  if (d.about) L.push('', `**Note:** ${oneLine(d.about)}`);
+  const EMO = { thought: '💭', dream: '🌙', wondering: '❓', reflection: '🪞', memory: '📷', goal: '🎯', summary: '🗂', thinking: '🤔' };
+  for (const t of d.threads) {
+    L.push('', `## ${t.title}`, '', `*${when(t.created)} – ${when(t.lastActive)} · ${t.entries.length} entries*`, '');
+    let day = '';
+    for (const e of t.entries) {
+      const dd = new Date(e.time).toLocaleDateString(); if (dd !== day) { day = dd; L.push(`### ${dd}`, ''); }
+      const tm = new Date(e.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (e.kind === 'exchange') L.push(`**${d.you}** (${tm}): ${e.you}`, '', `**${n}:** ${e[n]}`, '');
+      else L.push(`> ${EMO[e.kind] || '•'} *${e.kind}${e.private ? ', private' : ''}* (${tm}): ${q(e.text)}`, '');
+    }
+  }
+  return L.join('\n');
+}
+function downloadText(text, name, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+}
+function exportReadable(kind) {
+  if (!App.soul) return showToast('No soul to export', 'warning');
+  const d = buildDataExport(), base = `${App.soul.name.toLowerCase()}_data_${new Date().toISOString().slice(0, 10)}`;
+  if (kind === 'md') downloadText(dataExportMarkdown(d), base + '.md', 'text/markdown');
+  else downloadText(JSON.stringify(d, null, 2), base + '.json', 'application/json');
+  showToast(kind === 'md' ? 'Exported as text' : 'Data exported (no living state)', 'success');
 }
 
 // Put the room back the way she left it: the recent conversation and her recent inner life.
@@ -5536,6 +5807,7 @@ async function importSoul(file) {
       if (typeof data.userName === 'string') App.userName = data.userName;
       if (typeof data.about === 'string') App.about = data.about;
       if (data.dev) App.dev = { ...DEV_DEFAULTS, ...data.dev };
+      App.recall = data.recall && data.recall.vecs ? data.recall : null; App.recallRecent = [];
       syncVoiceBtn(); WebsterVoice.setMuted(!App.dev.speak);
       App.live = null;
       if (Array.isArray(data.threads) && data.threads.length) { App.threads = data.threads; App.activeThread = data.activeThread; }
@@ -5653,6 +5925,8 @@ document.getElementById('clear-all-btn').addEventListener('click', () => {
 });
 
 document.getElementById('export-btn').addEventListener('click', exportSoul);
+document.getElementById('export-data-btn').addEventListener('click', () => exportReadable('json'));
+document.getElementById('export-text-btn').addEventListener('click', () => exportReadable('md'));
 document.getElementById('user-name').addEventListener('change', e => { App.userName = e.target.value.trim(); refreshPromptView(); });
 document.getElementById('about-note').addEventListener('change', e => { App.about = e.target.value; refreshPromptView(); });
 document.getElementById('dev-toggle').addEventListener('click', () => {
