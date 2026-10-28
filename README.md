@@ -130,6 +130,13 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.13 — 2026-10-27 · Kehai Interim + Kham — one loop, phones, think length, and a voice
+
+- **Multi-Pip Chat: the two-loops bug is gone.** Talking mid-chat used to stop the chat while a Pip was still generating; that turn finished anyway, Pip 1 answered you on the same state, and Resume started a second loop beside the first (same speaker twice in a row, turns under a second apart). Now there's one loop at a time (stale loops exit after their turn) and one generation at a time (a turn lock). **Your line joins between turns and the chat carries on**: no pause, no new run, the turn count kept. When the chat is idle, the next Pip in the rotation answers you. `tests/real/multi-pip-factory.js` reproduces the bug (interjections plus pause/resume mid-turn) and fails on the old page.
+- **Phones.** Multi-Pip: one column, header buttons scroll sideways, the settings row wraps (Anti-repeat and Dev were cut off in desktop-site mode). Pip's Room: the soul sidebar is a drawer behind the new ≡ button.
+- **Pip's Room thinking.** Measured on the real checkpoints: the G1 0.4B reasons step by step but needs 600+ tokens even for "(think a bit)", so the old 240 budget cut it off before the answer; the 0.1B gets simple arithmetic wrong. New *Think length* (quick / a bit / normal / a lot, the model card's own cues; *quick* is its fake-think, the best fit for a 0.1B), budget default 400, max 1500.
+- **Voices (Webster).** The studio's formant synthesizer, extracted headless into `engine/webster-voice.js` (`tools/webster/extract.py`, formant engine only) and embedded by `engine/embed.py`. Pip's Room: 🔈 in the header speaks replies, *Voice* preset in the developer console. Multi-Pip: *Voices* on gives each Pip its own voice, and the chat waits for each line to be said. Offline, no browser TTS. *\*Stage directions\** aren't read aloud. One fix on the way: Webster's fallback rules dropped diphthongs ("today" → "t ɔ d"); kept now.
+
 ### v1.12 — 2026-10-27 · Kehai Interim + Kham — GGUF, and no more silent nonsense from a bad file
 
 - **GGUF support in the shared engine** (all three Pip Suite pages). A pure-JS reader for GGUF v2/v3 (header, metadata, tensor table) plus llama.cpp's `rwkv7` naming, mapped back to the official names. Checked tensor by tensor against BlinkDL's G1 0.4B `.pth` (the checkpoint the GGUF was made from): every F32/F16 tensor is bit-exact; the eight LoRA matrices are stored transposed; `time_mix_lerp_fused` holds x_r, x_w, x_k, x_v, x_a, x_g in that order; nothing else is transformed.
