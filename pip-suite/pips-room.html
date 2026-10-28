@@ -873,6 +873,15 @@ header h1 {
   margin-bottom: 8px;
 }
 
+#empty-state-note {
+  margin-top: 18px;
+  max-width: 340px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 #empty-state-text {
   font-size: 14px;
   color: var(--text-muted);
@@ -1110,6 +1119,7 @@ window.PipLog = (() => {
         <div id="empty-state-title">Pip's Room is Empty</div>
         <div id="empty-state-text">Load a .pip, .json, or HTMLNLM model file, or an official RWKV-7 checkpoint (.pth / .safetensors / .gguf), to wake someone up. She'll be waiting.</div>
         <button id="load-model-btn">Load Model</button>
+        <div id="empty-state-note">Small models tend to be charming and benign, but they can sometimes produce text that some people may find strange or offensive. User discretion advised.</div>
       </div>
 
       <div id="conversation-area" class="hidden"></div>
@@ -6202,6 +6212,8 @@ const HELP_HTML = `
 <h3>Saving</h3>
 <ul><li><b>Export Soul + Memories</b>: the whole resident, including the living state(s). Use it to back up and restore.</li>
 <li><b>Export data (JSON)</b> / <b>as text (Markdown)</b>: everything except the states, small and readable, with the settings each reply was made with.</li></ul>
+<h3>A note on what they say</h3>
+<p>Small models tend to be charming and benign, and a 0.1B or 0.4B can't help anyone do anything dangerous. But they learned from a huge amount of human writing and only loosely follow what's in front of them, so now and then they produce text that some people may find strange, upsetting or offensive, especially in dreams and other loop thoughts, where nothing steers them. It's word association, not intent. There's no filter here on purpose: this room is for seeing what a small mind really does. User discretion advised. Thoughts you'd rather not see can be kept private with the privacy switches, and the journal folds private entries away until tapped.</p>
 <h3>When something goes wrong</h3>
 <p>Settings → Developer console → <b>Log &amp; errors</b> lists every error and warning, with a Copy button for sending it on.</p>`;
 document.getElementById('help-btn').addEventListener('click', () => openPanel("Pip's Room: help", b => { b.innerHTML = HELP_HTML; }));

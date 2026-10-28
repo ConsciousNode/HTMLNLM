@@ -134,6 +134,7 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 - **Goals have to be real goals.** Fazzani's eight goals had become prompt echoes ("Something right now I want to talk with each person We used (to discuss)…" ×3, "Now we will talk about…"), and goals go into her system prompt, so she re-read the loop every turn. A goal now has its prompt echo stripped. It's kept only if it reads as a sentence (4+ words), contains none of the page's own loop-prompt phrases, and isn't a repeat. Goals already stored stay in the soul and journal, but only real ones are fed back. On her actual goals: 8/8 echoes dropped, real goals kept.
 - **Recall indexes newest first.** Her export showed 5 of 164 exchanges indexed: a phone pauses the page often, and indexing only runs when she's idle. The memories you're most likely to ask about now go first.
+- **A note on what they say** (Kham's call: a note, no filter). There's a line under *Load Model*: "Small models tend to be charming and benign, but they can sometimes produce text that some people may find strange or offensive. User discretion advised." Help has a longer section: no filter on purpose, since this room is for seeing what a small mind really does; loop thoughts are where it happens most; and the privacy switches keep thoughts out of view.
 
 ### v1.18 — 2026-10-28 · Kehai Interim + Kham — clean-room thinking, and the thought panel
 
