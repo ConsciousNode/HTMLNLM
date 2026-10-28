@@ -3214,12 +3214,12 @@ function kRender(phonemes, cfg = {}) {
       phase += 1;
       if (phase >= T0) { phase -= T0; const f0 = F0[k] + (F0[k1] - F0[k]) * x;
         T0 = sr / Math.max(50, f0 * (1 + (natural ? 0.008 : 0.002) * rnd() + rough * 0.04 * rnd()));
-        amp = 1 + (natural ? 0.04 : 0.01) * rnd() - rough * 0.25 * Math.abs(rnd()); oq = natural ? 0.62 : 0.55; }
+        amp = 1 + (natural ? 0.04 : 0.01) * rnd() - rough * 0.25 * Math.abs(rnd()); oq = natural ? 0.57 : 0.52; }          // open quotient: higher = breathier
       const t = phase / (oq * T0), flow = t < 1 ? (t * t - t * t * t) * 6.75 : 0;
       let src = flow * av * amp;
       const noise = rnd();
-      const breath = (natural ? 0.05 : 0.0) + rough * 0.15;
-      src += noise * (ah + breath * av * (t < 1 ? 1 : 0.3)) * 0.6;
+      const breath = (natural ? 0.015 : 0.0) + rough * 0.15;          // v4.1: was 0.05, heard as too breathy
+      src += noise * (ah + breath * av * (t < 1 ? 1 : 0.15)) * 0.6;
       lp = (1 - tilt) * src + tilt * lp;                               // spectral tilt (brightness)
       let v = NZ.step(lp); v = NP.step(v);
       v = R[4].step(v); v = R[3].step(v); v = R[2].step(v); v = R[1].step(v); v = R[0].step(v);
