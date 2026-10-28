@@ -108,7 +108,9 @@ The `pip-suite/` directory contains companion tools that work with HTMLNLM model
 
 **Real RWKV-7 guests (v1.4, Pip's Room since v1.5).** Junto, Multi-Pip Chat and Pip's Room also load **official RWKV-7 "Goose" (x070) checkpoints**: drop a `.pth` straight from [BlinkDL's releases](https://huggingface.co/BlinkDL) (no PyTorch, no conversion) or a `.safetensors`. They run on the real architecture (per-head matrix memory) with the official **RWKV World tokenizer**, both embedded in the page, so each page is still one file that works offline. Old `.pip` / `.json` models load exactly as before, side by side with real ones.
 
-- **Sizes:** the 0.1B (~190M params, ~760 MB in memory) is the practical one in a browser tab; the 0.4B (~450M, ~1.8 GB) is tight. Measured on a cloud Xeon (one thread), a 0.1B-shaped model takes **~360 ms per token**; expect a similar order on a desktop CPU.
+- **GGUF (v1.12):** llama.cpp `.gguf` files load too, quantized weights and all. They stay packed in memory and are read straight from the packed bytes, so a Q4 file costs about its own size. Measured: the **0.4B at Q4_K_M runs in 752 MB, against 1,643 MB for the 0.1B `.pth`**, at about the same speed per token as the 0.4B `.pth` (767 vs 806 ms). Reads F32, F16, BF16, Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q2_K, Q3_K, Q4_K, Q5_K and Q6_K (not the IQ types). Prefer **Q4_K_M, Q5_K_M or Q8_0**.
+- **Damaged downloads are refused (v1.12).** A file with zeroed-out weights (an interrupted download that kept its full size) used to load and talk nonsense. Now it's refused with a message to download again. So is a checkpoint of another RWKV variant (`rwkv7a-…`, `rwkv7b-…`), by name. Check a download with `certutil -hashfile FILE SHA256` (Windows) or `sha256sum FILE` against the hash on its HuggingFace page.
+- **Sizes:** the 0.1B (~190M params, ~760 MB in memory) is the practical one in a browser tab; the 0.4B (~450M, ~1.8 GB) is tight as a `.pth`, comfortable as a Q4 GGUF. Measured on a cloud Xeon (one thread), a 0.1B-shaped model takes **~360 ms per token**; expect a similar order on a desktop CPU.
 - **Shared base:** load the same checkpoint twice and both nodes/pips share one copy of the weights, each with its own state.
 - **Repetition control (v1.5):** real models get a presence + frequency penalty that fades over time (the ChatRWKV approach), so they don't get stuck saying the same thing. Junto has *Presence* / *Frequency* controls, Multi-Pip Chat has *Anti-repeat*; `0` turns it off. It's never applied to `.pip` models (on a small char-level vocabulary it would punish every letter).
 - **Meet Goose & Gander:** the [Goose & Gander release](https://github.com/ConsciousNode/HTMLNLM/releases/tag/goose-gander) has the 0.1B checkpoint we test against, unmodified, with its Apache-2.0 license. Drop it into Multi-Pip Chat twice.
@@ -127,6 +129,14 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 ---
 
 ## Changelog
+
+### v1.12 — 2026-10-27 · Kehai Interim + Kham — GGUF, and no more silent nonsense from a bad file
+
+- **GGUF support in the shared engine** (all three Pip Suite pages). A pure-JS reader for GGUF v2/v3 (header, metadata, tensor table) plus llama.cpp's `rwkv7` naming, mapped back to the official names. Checked tensor by tensor against BlinkDL's G1 0.4B `.pth` (the checkpoint the GGUF was made from): every F32/F16 tensor is bit-exact; the eight LoRA matrices are stored transposed; `time_mix_lerp_fused` holds x_r, x_w, x_k, x_v, x_a, x_g in that order; nothing else is transformed.
+- **Quantized matrices stay packed** (`QTensor`), dequantized inside the matmul. Fused row·x kernels for Q4_0, Q8_0, Q4_K, Q5_K and Q6_K read straight from the packed bytes; the K-quant "min" term uses per-32 sums of the input, one multiply per 32 weights. That took the 0.4B Q4_K_M from 3,635 to 767 ms/token.
+- **What Q4 costs** (`tests/real/gguf-vs-pth.js`, 0.4B, 97 predictions): perplexity 5.038 → 5.127 (+1.8%), top-1 agreement 90.7%, mean KL 0.061 nats/token. RAM 3,813 MB → 752 MB.
+- **The loader refuses what it would get wrong:** files with weights that are entirely zero (a damaged download; found because two of Kham's downloads didn't match their published SHA-256 and produced word salad), checkpoints with unknown tensors (RWKV-7a/7b, named in the message), and checkpoints with missing tensors (which used to get random init). Layer 0's unused `att.v0/v1/v2` stay allowed.
+- **Tests:** new `tests/gguf-dequant.js` checks all ten quant types against the `gguf` Python package (llama.cpp's reference; dequant max |Δ| = 0 on every type) and both refusals. `engine-ref`, `pth-reader`, `gradcheck` and `dialogue-tools` still pass. Real checkpoints: g1d-0.1B, g1d-0.4B and G1-0.4B `.pth` unchanged; G1-0.4B Q4_K_M GGUF coherent in Pip's Room (Playwright, Fazzani's soul file), no page errors.
 
 ### v1.11.1 — 2026-10-24 · Kehai Interim + Ed Interim — two catches from Ed's read of the seed-420 twins
 
