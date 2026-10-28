@@ -130,6 +130,12 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.14 — 2026-10-27 · Kehai Interim + Kham — Webster v4, and "Will it run here?"
+
+- **Webster v4** (`webster/webster.html`; v3 kept as `webster/webster-v3.html`). A new **Formant** engine in Klatt's design (MITalk/DECtalk): a glottal pulse through a cascade of five resonators, noise through parallel bands for hiss and bursts, aspiration after p/t/k, nasal zeros, and transitions smoothed both ways in time. It renders samples directly, so playback and *Export WAV* are the same audio. Fixed on the way: 85 ms of silence after every word (speech now runs on), a 35% pitch jump on stressed vowels (now +9% on a gently falling line), plurals split into two words, and English spelling rules (silent e, final y, soft c/g, r-vowels, -le, silent letters, diphthongs). The v3 engine stays as **Retro**. Measured: silence inside sentences 27–30% → 2–17%. `tests/webster-vowels.js` checks the vowels' formants by LPC against Peterson & Barney (all within 20%; most within 10%).
+- **The Pip Suite speaks with Webster v4** (`tools/webster/extract.py webster/webster.html`, then `engine/embed.py`).
+- **`tools/will-it-run.html`**: the capability scanner. WebGPU, WebGL, WASM, memory, storage, audio, platform APIs, and a timed benchmark calibrated against the real engine that gives ms/token and a verdict for each Pip Suite model.
+
 ### v1.13 — 2026-10-27 · Kehai Interim + Kham — one loop, phones, think length, and a voice
 
 - **Multi-Pip Chat: the two-loops bug is gone.** Talking mid-chat used to stop the chat while a Pip was still generating; that turn finished anyway, Pip 1 answered you on the same state, and Resume started a second loop beside the first (same speaker twice in a row, turns under a second apart). Now there's one loop at a time (stale loops exit after their turn) and one generation at a time (a turn lock). **Your line joins between turns and the chat carries on**: no pause, no new run, the turn count kept. When the chat is idle, the next Pip in the rotation answers you. `tests/real/multi-pip-factory.js` reproduces the bug (interjections plus pause/resume mid-turn) and fails on the old page.

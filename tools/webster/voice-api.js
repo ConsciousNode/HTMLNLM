@@ -30,12 +30,14 @@ function sayNow(text, voice) {
   return new Promise(resolve => {
     const ph = phonemesFor(text, voice && voice.lang);
     if (muted || !ph.length) return resolve();
-    if (!synth) synth = new FormantSynth();
+    if (!synth) synth = new KlattSynth();                          // Webster v4's Klatt engine
     if (synth.ctx.state === 'suspended') synth.ctx.resume();
     let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
-    const cfg = config(voice, text), secs = ph.reduce((a, p) => a + (PHONEMES[p] || PHONEMES['_']).dur / 1000 / cfg.rate, 0);
+    const lang = (voice && voice.lang) || detect(text);
+    const cfg = { ...config(voice, text), lang, words: (text.toLowerCase().match(/[\w']+/g) || []) };
+    const secs = ph.length * 0.12 / cfg.rate + 2;
     synth.playSequence(ph, cfg, null, finish);
-    setTimeout(finish, (secs + 1.5) * 1000);                      // never hang the chat on a lost callback
+    setTimeout(finish, (secs + 1.5) * 1000);                    // generous: the real end comes from onended                      // never hang the chat on a lost callback
   });
 }
 return {
