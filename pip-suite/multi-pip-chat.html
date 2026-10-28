@@ -651,6 +651,28 @@ header h1 span {
   font-size: 11px; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; }
 .dev-toggle-btn { cursor: pointer; }
 
+
+/* ── Phones (v1.13): one column, header buttons scroll sideways, settings wrap ── */
+#app-container { height: 100dvh; }
+#main-panel { min-width: 0; min-height: 0; }
+#controls-row { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  header { height: auto; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  header h1 { font-size: 15px; }
+  #header-actions { margin-left: 0; width: 100%; overflow-x: auto; gap: 6px; flex-wrap: nowrap; padding-bottom: 2px; }
+  #header-actions .btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+  #main-layout { flex-direction: column; }
+  #sidebar { width: 100%; max-height: 20vh; border-right: none; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  #sidebar-footer { display: none; }
+  #main-panel { flex: 1; }
+  #upload-zone { margin: 10px; padding: 16px; }
+  #controls-panel { padding: 10px 12px; }
+  #controls-row { gap: 8px; margin-bottom: 8px; }
+  #controls-row .control-group { flex: 1 1 28%; min-width: 0; }
+  #controls-row .control-group:first-child { flex-basis: 100%; }
+  #controls-row .control-group input, #controls-row .control-group select { width: 100%; }
+  #console-panel { height: 64px; }
+}
 </style>
 </head>
 <body>
@@ -699,7 +721,7 @@ header h1 span {
         <div id="upload-icon">+</div>
         <div id="upload-title">Add a Pip</div>
         <div id="upload-text">Drag and drop a .pip, .json, or HTMLNLM model file, or an official RWKV-7 checkpoint (.pth / .safetensors / .gguf), or click to browse</div>
-        <div id="upload-formats">Supported: .pip | .json | .html | RWKV-7 .pth | .safetensors</div>
+        <div id="upload-formats">Supported: .pip | .json | .html | RWKV-7 .pth | .safetensors | .gguf</div>
       </div>
 
       <div id="chat-area" class="hidden"></div>

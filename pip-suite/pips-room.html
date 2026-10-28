@@ -929,6 +929,18 @@ header h1 {
 .model-info span {
   color: var(--accent);
 }
+
+/* ── Phones (v1.13): the soul sidebar becomes a drawer (the ≡ button), chat gets the full width ── */
+#sidebar-toggle { display: none; }
+#main-panel { min-width: 0; }
+@media (max-width: 760px) {
+  #sidebar-toggle { display: inline-flex; }
+  #sidebar { position: fixed; top: 48px; bottom: 0; left: 0; width: min(85vw, 320px); z-index: 50;
+             transform: translateX(-105%); transition: transform 0.25s ease-out; box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
+  body.sidebar-open #sidebar { transform: none; }
+  header { padding: 10px 12px; }
+  .header-actions { gap: 6px; }
+}
 </style>
 </head>
 <body>
@@ -937,6 +949,7 @@ header h1 {
   <header>
     <h1>PIP'S ROOM<span class="version-badge">RWKV-v7</span></h1>
     <div class="header-actions">
+      <button class="btn-icon" id="sidebar-toggle" title="Soul, mood and loops">≡</button>
       <button class="btn-icon" id="header-load-btn" title="Load Model">+</button>
       <button class="btn-icon" id="header-settings-btn" title="Settings">*</button>
     </div>
@@ -3854,6 +3867,8 @@ document.getElementById('pip-name').addEventListener('change', (e) => {
   showToast(`Now called ${name}`, 'success');
 });
 
+document.getElementById('sidebar-toggle').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+document.getElementById('main-panel').addEventListener('click', () => document.body.classList.remove('sidebar-open'));
 document.getElementById('import-btn').addEventListener('click', () => {
   document.getElementById('import-file-input').click();
 });
