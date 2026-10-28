@@ -130,6 +130,14 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.16 — 2026-10-28 · Kehai Interim + Kham — redo a turn, two voices, tok/s
+
+- **↻ and ✎ on the latest turn** (Pip's Room). ↻ takes the reply back and lets them answer again; ✎ takes it back and puts your message in the box to edit. RWKV makes this cheap: the engine never changes a state in place, so the state from just before the turn is kept as a reference and put back, exactly (the test compares the state itself). The exchange and its reasoning come out of memory, traits and mood go back; thoughts they had since stay in the journal.
+- **▶ on every bubble**, theirs and yours, always available. The 🔈/🔊 header button now only means "read their replies aloud automatically".
+- **Two voices**: theirs (default Female) and yours (default Narrator), each a Webster preset plus sliders in the developer console: pitch, speed, formants (voice size), brightness, roughness, with ▶ Test and "Preset values". Saved with the soul. (Webster voice API: `presetValues(name)`.)
+- **tok/s on each reply** ("18 tok · 8.2 tok/s"; hover for the breakdown) and the last reply's speed in the developer console. For an RNN reading and writing a token cost the same, so this is the engine's real speed for the whole turn.
+- Tests: `tests/real/pips-room-redo-voices-e2e.js` (real 0.1B).
+
 ### v1.15 — 2026-10-28 · Kehai Interim + Kham — Recall: a dual memory index in Pip's Room
 
 - **Pip's Room remembers old exchanges word for word.** Two indexes over what a resident has lived:

@@ -1779,6 +1779,8 @@ return {
     return { ...V[i % V.length], ...(i >= V.length ? { pitch: 100 + (i * 37) % 120 } : {}) };
   },
   presets: () => Object.keys(VOICE_PRESETS), phonemesFor,
+  /** A preset's numbers (pitch, rate, formantScale, brightness, roughness), for sliders. */
+  presetValues: name => ({ ...(VOICE_PRESETS[name] || VOICE_PRESETS.narrator) }),
 };
 
 })();

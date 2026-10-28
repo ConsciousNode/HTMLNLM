@@ -393,6 +393,18 @@ header h1 {
   color: var(--text-main);
 }
 
+.message-actions {
+  display: flex; align-items: center; gap: 6px; margin-top: 6px;
+}
+.message-actions .message-timestamp { margin-top: 0; margin-right: auto; }
+.msg-btn {
+  background: none; border: 1px solid transparent; border-radius: 6px; color: var(--text-muted);
+  font-size: 12px; line-height: 1; padding: 3px 6px; cursor: pointer; opacity: 0.75;
+}
+.msg-btn:hover { opacity: 1; border-color: var(--text-muted); }
+.voice-block { border-top: 1px solid rgba(128,128,128,0.25); padding-top: 8px; margin-top: 8px; }
+.voice-block input[type=range] { width: 120px; }
+.message-speed { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
 .message-recall {
   font-size: 11px;
   color: var(--text-muted);
@@ -958,7 +970,7 @@ header h1 {
     <h1>PIP'S ROOM<span class="version-badge">RWKV-v7</span></h1>
     <div class="header-actions">
       <button class="btn-icon" id="sidebar-toggle" title="Soul, mood and loops">≡</button>
-      <button class="btn-icon" id="voice-toggle" title="Speak replies aloud (Webster)">🔈</button>
+      <button class="btn-icon" id="voice-toggle" title="Read replies aloud automatically (Webster). ▶ on any message reads just that one.">🔈</button>
       <button class="btn-icon" id="header-load-btn" title="Load Model">+</button>
       <button class="btn-icon" id="header-settings-btn" title="Settings">*</button>
     </div>
@@ -1220,6 +1232,7 @@ header h1 {
         <div class="settings-row"><span>Living memory <small id="live-info">not started</small></span>
           <button class="settings-btn" id="live-forget" title="Throw away the RWKV state and settle in again from the soul and recent conversation">Start fresh</button></div>
         <div class="settings-row"><span>Recall <small id="recall-info">off</small></span></div>
+        <div class="settings-row"><span>Speed <small id="speed-info">no replies yet</small></span></div>
         <div class="settings-row"><button class="settings-btn" id="dev-reset">Reset to defaults</button></div>
         <div class="dev-label">Last prompt sent <small>(exactly what the model saw)</small></div>
         <pre id="dev-prompt"></pre>
@@ -3777,6 +3790,8 @@ return {
     return { ...V[i % V.length], ...(i >= V.length ? { pitch: 100 + (i * 37) % 120 } : {}) };
   },
   presets: () => Object.keys(VOICE_PRESETS), phonemesFor,
+  /** A preset's numbers (pitch, rate, formantScale, brightness, roughness), for sliders. */
+  presetValues: name => ({ ...(VOICE_PRESETS[name] || VOICE_PRESETS.narrator) }),
 };
 
 })();
@@ -4491,10 +4506,15 @@ function addMessage(text, sender, ts) {
   const timeEl = document.createElement('div');
   timeEl.className = 'message-timestamp';
   timeEl.textContent = new Date(ts || Date.now()).toLocaleTimeString();
+  const actions = document.createElement('div'); actions.className = 'message-actions';
+  actions.appendChild(timeEl);
+  const play = document.createElement('button'); play.className = 'msg-btn msg-play'; play.textContent = '▶';
+  play.title = 'Read this aloud (Webster)'; play.onclick = () => playBubble(play, text, sender === 'pip' ? 'pip' : 'user');
+  actions.appendChild(play);
   
   msg.appendChild(senderEl);
   msg.appendChild(textEl);
-  msg.appendChild(timeEl);
+  msg.appendChild(actions);
   area.appendChild(msg);
   area.scrollTop = area.scrollHeight;
 }
@@ -4577,10 +4597,12 @@ async function handleUserMessage() {
   document.getElementById('send-btn').disabled = true;
   
   addMessage(text, 'user');
+  const userEl = document.getElementById('conversation-area').lastElementChild;
   
   showTypingIndicator();
   App.isGenerating = true;
   while (App.loopBusy) await new Promise(r => setTimeout(r, 200));   // let a running loop finish first
+  const snap = turnSnapshot(text, userEl), fw0 = App.fwdCount, gen0 = App.tokensGenerated, tStart = performance.now();
   const rec = await recallFor(text).catch(e => { console.warn('recall failed:', e); return { lines: '', notes: [] }; });
   const pipName = App.soul?.name || 'Resident';
   const you = userLabel();
@@ -4620,8 +4642,9 @@ async function handleUserMessage() {
   
   hideTypingIndicator();
   addMessage(response, 'pip');
+  showSpeed(App.fwdCount - fw0, App.tokensGenerated - gen0, performance.now() - tStart);
   showRecallNote(rec.notes);
-  if (App.dev.speak) WebsterVoice.speak(response, { preset: App.dev.voice });   // Webster: said aloud, offline
+  if (App.dev.speak) WebsterVoice.speak(response, voiceOf('pip'));   // Webster: read aloud automatically, offline
   
   App.memories.push({
     thread: App.activeThread,
@@ -4639,6 +4662,9 @@ async function handleUserMessage() {
   document.getElementById('setting-tokens').textContent = App.tokensGenerated;
   
   updateMemoryStats();
+  snap.pipEl = document.getElementById('conversation-area').querySelectorAll('.message.pip');
+  snap.pipEl = snap.pipEl[snap.pipEl.length - 1]; snap.after = App.live ? App.live.tokens : 0;
+  App.turnSnap = snap; refreshRedoButtons();
   
   input.disabled = false;
   document.getElementById('send-btn').disabled = false;
@@ -4655,7 +4681,7 @@ async function handleUserMessage() {
 // ── Settings for the voice (the developer console edits these; saved with the soul) ──
 const DEV_DEFAULTS = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996,
                        maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true, livingMemory: true,
-                       think: false, thinkTokens: 400, thinkLength: 'think', speak: false, voice: 'female', bridgeCount: 3, bridgeChars: 200, recall: true };
+                       think: false, thinkTokens: 400, thinkLength: 'think', speak: false, voice: 'female', voices: null, bridgeCount: 3, bridgeChars: 200, recall: true };
 App.dev = { ...DEV_DEFAULTS };
 App.userName = '';           // what the resident calls you; empty = "friend" in the prompt, "User" as the label
 App.about = '';              // a free note prepended to every conversation
@@ -4755,6 +4781,51 @@ const DEV_FIELDS = [
   ['bridgeCount', 'Bridge: summaries', 0, 10, 1, 'How many summaries from other threads a new thread starts with (0 = none)'],
   ['bridgeChars', 'Bridge: length', 60, 600, 20, 'Characters kept from each of those summaries'],
 ];
+// ── Voices: one for the resident, one for you. Each is a Webster preset plus any slider changes.
+// The 🔈/🔊 header button only decides whether their replies are read automatically; ▶ on any bubble always works.
+const VOICE_KNOBS = [['pitch', 'Pitch (Hz)', 60, 300, 1], ['rate', 'Speed', 0.5, 1.6, 0.05], ['formantScale', 'Formants (voice size)', 0.8, 1.4, 0.01],
+                     ['brightness', 'Brightness', 0.5, 1.5, 0.01], ['roughness', 'Roughness', 0, 0.6, 0.01]];
+function voices() {
+  if (!App.dev.voices) App.dev.voices = { pip: { preset: App.dev.voice || 'female' }, user: { preset: 'narrator' } };
+  return App.dev.voices;
+}
+const voiceOf = role => voices()[role] || { preset: role === 'pip' ? 'female' : 'narrator' };
+function voiceValue(role, k) { const v = voiceOf(role); if (v[k] != null) return v[k]; return { ...WebsterVoice.presetValues?.(v.preset) }[k]; }
+let playingBtn = null;
+function playBubble(btn, text, role) {
+  if (playingBtn === btn) { WebsterVoice.stop(); btn.textContent = '▶'; playingBtn = null; return; }   // tap again to stop
+  WebsterVoice.stop(); if (playingBtn) playingBtn.textContent = '▶';
+  playingBtn = btn; btn.textContent = '■';
+  WebsterVoice.speak(text, voiceOf(role)).finally(() => { if (playingBtn === btn) { btn.textContent = '▶'; playingBtn = null; } });
+}
+function buildVoiceControls(box) {
+  for (const [role, label] of [['pip', `${App.soul?.name || 'Resident'}'s voice`], ['user', 'Your voice']]) {
+    const blk = document.createElement('div'); blk.className = 'voice-block';
+    const head = document.createElement('label'); head.className = 'dev-row';
+    head.innerHTML = `<span>${label}<small>${role === 'pip' ? 'used for ▶ on their bubbles and for reading replies aloud (🔊)' : 'used for ▶ on your bubbles'}</small></span>`;
+    const sel = document.createElement('select');
+    for (const v of WebsterVoice.presets()) { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); }
+    sel.value = voiceOf(role).preset;
+    head.appendChild(sel); blk.appendChild(head);
+    const knobs = [];
+    for (const [k, name, min, max, step] of VOICE_KNOBS) {
+      const row = document.createElement('label'); row.className = 'dev-row';
+      const out = document.createElement('small'), inp = document.createElement('input');
+      row.innerHTML = `<span>${name}</span>`; row.firstChild.appendChild(out);
+      inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step;
+      const show = () => { inp.value = voiceValue(role, k); out.textContent = (+inp.value).toFixed(step < 1 ? 2 : 0); };
+      inp.oninput = () => { voices()[role][k] = +inp.value; out.textContent = (+inp.value).toFixed(step < 1 ? 2 : 0); };
+      show(); knobs.push(show); row.appendChild(inp); blk.appendChild(row);
+    }
+    sel.onchange = () => { voices()[role] = { preset: sel.value }; if (role === 'pip') App.dev.voice = sel.value; knobs.forEach(f => f()); };
+    const row = document.createElement('div'); row.className = 'settings-row';
+    const test = document.createElement('button'); test.className = 'settings-btn'; test.textContent = '▶ Test';
+    test.onclick = () => { WebsterVoice.stop(); WebsterVoice.speak(role === 'pip' ? `Hello, I'm ${App.soul?.name || 'here'}. This is my voice.` : 'Hello, this is your voice.', voiceOf(role)); };
+    const reset = document.createElement('button'); reset.className = 'settings-btn'; reset.textContent = 'Preset values';
+    reset.onclick = () => { voices()[role] = { preset: sel.value }; knobs.forEach(f => f()); };
+    row.append(test, reset); blk.appendChild(row); box.appendChild(blk);
+  }
+}
 function buildDevConsole() {
   const box = document.getElementById('dev-fields'); box.innerHTML = '';
   for (const [key, label, min, max, step, hint] of DEV_FIELDS) {
@@ -4771,13 +4842,7 @@ function buildDevConsole() {
     for (const [v, t] of [['quick', 'quick (no reasoning)'], ['bit', 'a bit'], ['think', 'normal'], ['lot', 'a lot']]) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); }
     sel.value = App.dev.thinkLength || 'think'; sel.onchange = () => { App.dev.thinkLength = sel.value; refreshPromptView(); };
     row.appendChild(sel); box.appendChild(row); }
-  { const row = document.createElement('label'); row.className = 'dev-row'; row.title = 'Webster preset used when replies are spoken (the 🔈 button)';
-    row.innerHTML = '<span>Voice<small>Webster formant voice for spoken replies (🔈 in the header)</small></span>';
-    const sel = document.createElement('select');
-    for (const v of WebsterVoice.presets()) { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); }
-    sel.value = App.dev.voice || 'female';
-    sel.onchange = () => { App.dev.voice = sel.value; if (App.dev.speak) { WebsterVoice.stop(); WebsterVoice.speak('Hello, this is my voice.', { preset: sel.value }); } };
-    row.appendChild(sel); box.appendChild(row); }
+  buildVoiceControls(box);
   for (const [key, label] of [['think', 'Think before answering (uses the model\'s own User:/Assistant: format for that turn; reasoning goes to the journal; needs living memory)'], ['livingMemory', 'Living memory (keep the RWKV state between turns)'], ['recall', 'Recall (search summaries every reply; bring back an old exchange word for word when asked to remember)'], ['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
     const row = document.createElement('label'); row.className = 'dev-row dev-check';
     row.innerHTML = `<span>${label}</span>`;
@@ -5370,7 +5435,7 @@ async function loadModelFile(file) {
     if (res.report.missing.length) throw new Error(`checkpoint is missing ${res.report.missing.length} tensors (${res.report.missing.slice(0, 3).join(', ')})`);
     setSoulConsole('Initializing tokenizer...');
     updateWakingProgress(75);
-    App.model = res.model;
+    App.model = res.model; countForwards(App.model);
     App.tokenizer = worldTokenizer();
     App.kind = 'rwkv7';
     await wakeUp({ vocab: res.cfg.vocabSize, dim: res.cfg.dim, layers: res.cfg.numLayers }, 'rwkv7 x070', res.nParams);
@@ -5707,6 +5772,61 @@ async function exportSoul() {
   showToast('Soul exported!', 'success');
 }
 
+// ── Speed: every token the model reads or writes is one forward pass, and for an RNN both cost the same,
+// so tok/s here is the engine's real speed for the turn (reading your line, any recall, thinking, the reply).
+App.fwdCount = 0;
+function countForwards(model) {
+  if (!model || model._counted || typeof model.forward !== 'function') return;
+  const f = model.forward.bind(model); model.forward = (...a) => { App.fwdCount++; return f(...a); }; model._counted = true;
+}
+function showSpeed(processed, written, ms) {
+  const msg = [...document.querySelectorAll('#conversation-area .message.pip')].at(-1); if (!msg || !processed) return;
+  const rate = processed / (ms / 1000);
+  const el = document.createElement('span'); el.className = 'message-speed';
+  el.textContent = `${written} tok · ${rate >= 10 ? rate.toFixed(0) : rate.toFixed(1)} tok/s`;
+  el.title = `${processed} tokens through the model in ${(ms / 1000).toFixed(1)} s (${written} written, ${processed - written} read: your line, any memory, settings); ${(ms / processed).toFixed(0)} ms per token`;
+  msg.querySelector('.message-actions')?.insertBefore(el, msg.querySelector('.msg-play'));
+  App.lastSpeed = { processed, written, ms, rate };
+  const s = document.getElementById('speed-info'); if (s) s.textContent = `${rate.toFixed(1)} tok/s last reply (${(ms / processed).toFixed(0)} ms/token)`;
+}
+
+// ── Redo the latest turn: ↻ asks again, ✎ puts your message back to edit. RWKV makes this cheap: the engine
+// never changes a state in place, so the state from just before the turn is kept as a reference and put back.
+// The exchange (and its reasoning) is taken out; thoughts they had since stay in the journal, but leave the state.
+App.turnSnap = null;
+function turnSnapshot(text, userEl) {
+  return { thread: App.activeThread, text, at: Date.now(), userEl, print: modelPrint(),
+           live: App.live ? { state: App.live.state, lastLogits: App.live.lastLogits, tokens: App.live.tokens, sig: App.live.sig } : null,
+           traits: { ...(App.soul?.traits || {}) }, mood: App.soul?.mood, conversationCount: App.conversationCount,
+           recallRecent: [...App.recallRecent] };
+}
+function refreshRedoButtons() {
+  document.querySelectorAll('.msg-redo').forEach(b => b.remove());
+  const S = App.turnSnap; if (!S || S.thread !== App.activeThread || !S.userEl?.isConnected || !S.pipEl?.isConnected) return;
+  const add = (el, label, title, mode) => { const b = document.createElement('button'); b.className = 'msg-btn msg-redo'; b.textContent = label; b.title = title;
+    b.onclick = () => redoTurn(mode); el.querySelector('.message-actions')?.appendChild(b); };
+  add(S.userEl, '✎', 'Edit this message and send it again (their reply is taken back)', 'edit');
+  add(S.pipEl, '↻', 'Take this reply back and let them answer again', 'regen');
+}
+async function redoTurn(mode) {
+  const S = App.turnSnap;
+  if (!S || threadBusy()) return;
+  if (S.thread !== App.activeThread || S.print !== modelPrint()) { App.turnSnap = null; refreshRedoButtons(); return showToast('Only the latest turn, with the same model, can be redone', 'info'); }
+  const lost = !!(S.live && App.live && App.live.tokens !== S.after);
+  if (S.live && App.live) { App.live.state = S.live.state; App.live.lastLogits = S.live.lastLogits; App.live.tokens = S.live.tokens; App.live.sig = S.live.sig; updateLiveInfo(); }
+  App.memories = App.memories.filter(m => !(threadOf(m) === S.thread && m.timestamp >= S.at && (m.type === 'conversation' || m.type === 'reasoning')));
+  if (App.soul) { App.soul.traits = S.traits; App.soul.mood = S.mood; }
+  App.conversationCount = S.conversationCount; App.recallRecent = S.recallRecent;
+  App.turnSnap = null;
+  WebsterVoice.stop();
+  S.pipEl.remove(); S.userEl.remove();
+  updateMemoryStats();
+  const input = document.getElementById('message-input'); input.value = S.text;
+  if (lost) showToast('Thoughts they had since that reply stay in the journal, but are taken out of their living memory with it', 'info', 8000);
+  if (mode === 'regen') await handleUserMessage();
+  else { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+}
+
 // ── Readable exports: everything except the living state(s) and recall vectors ──
 // The soul file is for restoring; these are for looking at. The states (MBs each) and vectors are left out,
 // so the files stay small. JSON for machines (ISO times, one record per entry, threads in order), Markdown for people.
@@ -5779,6 +5899,7 @@ function exportReadable(kind) {
 
 // Put the room back the way she left it: the recent conversation and her recent inner life.
 function renderRestored() {
+  App.turnSnap = null;
   const area = document.getElementById('conversation-area');
   area.querySelectorAll('.message').forEach(el => el.remove());
   for (const m of App.memories.filter(m => m.type === 'conversation' && threadOf(m) === App.activeThread).slice(-20)) {
@@ -5808,7 +5929,7 @@ async function importSoul(file) {
       if (typeof data.about === 'string') App.about = data.about;
       if (data.dev) App.dev = { ...DEV_DEFAULTS, ...data.dev };
       App.recall = data.recall && data.recall.vecs ? data.recall : null; App.recallRecent = [];
-      syncVoiceBtn(); WebsterVoice.setMuted(!App.dev.speak);
+      syncVoiceBtn();
       App.live = null;
       if (Array.isArray(data.threads) && data.threads.length) { App.threads = data.threads; App.activeThread = data.activeThread; }
       else App.threads = [];
@@ -5952,8 +6073,8 @@ document.getElementById('pip-name').addEventListener('change', (e) => {
 
 function syncVoiceBtn() { const b = document.getElementById('voice-toggle'); b.textContent = App.dev.speak ? '🔊' : '🔈'; b.classList.toggle('active', !!App.dev.speak); }
 document.getElementById('voice-toggle').addEventListener('click', () => {
-  App.dev.speak = !App.dev.speak; WebsterVoice.setMuted(!App.dev.speak); syncVoiceBtn();
-  if (App.dev.speak) WebsterVoice.speak('Voice on.', { preset: App.dev.voice });
+  App.dev.speak = !App.dev.speak; syncVoiceBtn();
+  if (App.dev.speak) WebsterVoice.speak('Reading replies aloud.', voiceOf('pip')); else WebsterVoice.stop();
   showToast(App.dev.speak ? 'Replies will be spoken aloud' : 'Voice off', 'info');
 });
 document.getElementById('sidebar-toggle').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
