@@ -2798,9 +2798,10 @@ async function handleUserMessage() {
     // Thinking turns use the format the model was trained on ("User: … (think)", blank line,
     // "Assistant: <think"): with name labels a 0.1B gets lost; with these it reasons. Who they are
     // is carried by the System lines, and the answer may run several lines (it ends at a blank line).
-    const fedPrompt = thinking ? `\nUser: ${text} (think)\n\nAssistant:` : prompt;
+    const TL = { bit: ' (think a bit)', think: ' (think)', lot: ' (think a lot)', quick: '' }[App.dev.thinkLength] ?? ' (think)';
+    const fedPrompt = thinking ? `\nUser: ${text.replace(/\n{2,}/g, '\n').trim()}${TL}\n\nAssistant:` : prompt;
     const t = await liveTurn(fedPrompt, thinking ? App.dev.maxTokens * 2 : App.dev.maxTokens, App.dev.temperature,
-                             { think: thinking, endOn: thinking ? '\n\n' : '\n' });
+                             { think: thinking, quickThink: thinking && App.dev.thinkLength === 'quick', endOn: thinking ? '\n\n' : '\n' });
     response = t.text;
     if (thinking && t.thought) {
       const shared = App.privacy.innerVoice;
@@ -2847,7 +2848,7 @@ async function handleUserMessage() {
 // ── Settings for the voice (the developer console edits these; saved with the soul) ──
 const DEV_DEFAULTS = { temperature: 0.85, topP: 0.9, topK: 0, presence: 0.4, frequency: 0.4, decay: 0.996,
                        maxTokens: 80, contextTurns: 3, systemPrompt: true, soulInPrompt: true, livingMemory: true,
-                       think: false, thinkTokens: 240, bridgeCount: 3, bridgeChars: 200 };
+                       think: false, thinkTokens: 400, thinkLength: 'think', bridgeCount: 3, bridgeChars: 200 };
 App.dev = { ...DEV_DEFAULTS };
 App.userName = '';           // what the resident calls you; empty = "friend" in the prompt, "User" as the label
 App.about = '';              // a free note prepended to every conversation
@@ -2943,7 +2944,7 @@ const DEV_FIELDS = [
   ['decay', 'Penalty decay', 0.9, 1, 0.001, 'How fast old repeats are forgiven (1 = never)'],
   ['maxTokens', 'Max reply tokens', 10, 300, 10, 'Longest reply, in tokens'],
   ['contextTurns', 'Remembered exchanges', 0, 10, 1, 'How many past exchanges go into each prompt'],
-  ['thinkTokens', 'Thinking budget', 20, 600, 10, 'Most tokens spent thinking before answering'],
+  ['thinkTokens', 'Thinking budget', 20, 1500, 10, 'Most tokens spent thinking before answering. A 0.4B often needs 600+; a thought that runs out is closed early and the answer suffers'],
   ['bridgeCount', 'Bridge: summaries', 0, 10, 1, 'How many summaries from other threads a new thread starts with (0 = none)'],
   ['bridgeChars', 'Bridge: length', 60, 600, 20, 'Characters kept from each of those summaries'],
 ];
@@ -2957,6 +2958,12 @@ function buildDevConsole() {
     inp.onchange = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) App.dev[key] = Math.min(max, Math.max(min, v)); inp.value = App.dev[key]; refreshPromptView(); };
     row.appendChild(inp); box.appendChild(row);
   }
+  { const row = document.createElement('label'); row.className = 'dev-row'; row.title = 'How long to think (the model card\'s own cues)';
+    row.innerHTML = '<span>Think length<small>a bit / normal / a lot are the model\'s own cues; quick skips the reasoning (best on a 0.1B)</small></span>';
+    const sel = document.createElement('select');
+    for (const [v, t] of [['quick', 'quick (no reasoning)'], ['bit', 'a bit'], ['think', 'normal'], ['lot', 'a lot']]) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); }
+    sel.value = App.dev.thinkLength || 'think'; sel.onchange = () => { App.dev.thinkLength = sel.value; refreshPromptView(); };
+    row.appendChild(sel); box.appendChild(row); }
   for (const [key, label] of [['think', 'Think before answering (uses the model\'s own User:/Assistant: format for that turn; reasoning goes to the journal; needs living memory)'], ['livingMemory', 'Living memory (keep the RWKV state between turns)'], ['systemPrompt', 'Use the system prompt'], ['soulInPrompt', 'Put the soul (traits, mood, values, goals) in it']]) {
     const row = document.createElement('label'); row.className = 'dev-row dev-check';
     row.innerHTML = `<span>${label}</span>`;
@@ -3133,7 +3140,10 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
   let thought = '';
   const endOn = opts.endOn || '\n';
   if (opts.think) { const TS = thinkSampling(D, temp); temp = TS.temp; opts.topP = TS.topP; }
-  if (opts.think) { await feedLive(' <think'); thought = await thinkPhase(rep, temp); }
+  // "quick" is the model card's fake thinking ("Assistant: <think></think"): the reasoning format, no reasoning.
+  // Nice answers and fast, the best fit for a 0.1B, which can't yet reason its way to a right answer.
+  if (opts.think && opts.quickThink) await feedLive(' <think></think>');
+  else if (opts.think) { await feedLive(' <think'); thought = await thinkPhase(rep, temp); }
   if (!opts.think) for (const m of App.memories.slice(-4)) if (m.response) for (const id of tok.encode(m.response)) rep.add(id);
   let gen = [], logits = App.live.lastLogits, ended = false; const trail = markTrail();
   for (let i = 0; i < maxTokens; i++) {
@@ -3157,7 +3167,7 @@ async function liveTurn(text, maxTokens, temp, opts = {}) {
   }
   if (!ended) await feedLive(tok.decode(gen).endsWith('\n') ? endOn.slice(1) || '\n' : endOn);
   updateLiveInfo();
-  return { text: tok.decode(gen).trimStart().split(endOn)[0].trim(), fed: updates + text + (opts.think ? ' <think' : ''), thought };
+  return { text: tok.decode(gen).trimStart().split(endOn)[0].trim(), fed: updates + text + (opts.think ? (opts.quickThink ? ' <think></think>' : ' <think') : ''), thought };
 }
 // Saving: all layers' arrays in one Float32 block, base64 (about 3.2 MB of text for a 0.1B).
 function encodeLive() {
