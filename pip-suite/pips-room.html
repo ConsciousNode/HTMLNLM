@@ -4807,7 +4807,7 @@ function soulSentence() {
   if (S.values?.length) out.push(`${n} values ${listJoin(S.values)}.`);
   if (S.mood) out.push(`Right now ${n} feels ${S.mood}.`);
   const tidy = g => g.replace(/^\s*\d+[.)]\s*/, '').replace(/[\s.]+$/, '');     // "3) Learn more." → "Learn more"
-  const goals = (S.goals || []).filter(g => !DEFAULT_GOALS.includes(g)).slice(-2).map(g => tidy(clip(g, 90))).filter(Boolean);
+  const goals = (S.goals || []).filter(g => !DEFAULT_GOALS.includes(g) && cleanGoal(g)).slice(-2).map(g => tidy(clip(g, 90))).filter(Boolean);
   if (goals.length) { const gl = goals.join('; '); out.push(`${n}'s goals: ${gl}${gl.endsWith('…') ? '' : '.'}`); }
   return out.join(' ');
 }
@@ -4985,7 +4985,7 @@ function soulSig() {
   const top = Object.keys(TRAIT_WORDS).filter(k => (t[k] || 0) >= 0.5).sort((a, b) => t[b] - t[a]).slice(0, 3)
     .map(k => (t[k] >= 0.7 ? 'very ' : '') + TRAIT_WORDS[k]).join(',');
   return { who: `${S.name}|${App.userName}|${App.about.trim()}|${App.dev.soulInPrompt}`, mood: S.mood || '',
-           traits: top, goals: (S.goals || []).filter(g => !DEFAULT_GOALS.includes(g)).slice(-1)[0] || '' };
+           traits: top, goals: (S.goals || []).filter(g => !DEFAULT_GOALS.includes(g) && cleanGoal(g)).slice(-1)[0] || '' };
 }
 // What changed about them since the state last heard, as short System lines (an update to context).
 function soulUpdates() {
@@ -5403,7 +5403,8 @@ async function embedForRecall(text, stop) {
 // Idle-time work: give one memory its vector. Gives up the moment you send a message.
 async function indexOneMemory() {
   if (!recallOn()) return false;
-  const R = ensureRecall(), m = recallable().find(m => !R.vecs[memKey(m)]);
+  // newest first: on a phone the page is often asleep, so the memories you're likeliest to ask about go first
+  const R = ensureRecall(), m = recallable().reverse().find(m => !R.vecs[memKey(m)]);
   if (!m) return false;
   const v = await embedForRecall(vecText(m), () => App.isGenerating);
   if (!v) return false;
@@ -5839,10 +5840,20 @@ async function loopMemoryReplay() {
   const out = await selfResponse(`I remember when ${App.userName || 'my friend'} said "${clip(m.user, 80)}" and I answered "${clip(m.response, 80)}". Looking back, I feel`, 40, 0.85);
   return out ? `Remembering "${clip(m.user, 40)}": ${out}` : null;
 }
+// The page's own loop prompts, echoed back ("Thinking back on when…", "Now we have learned…"), aren't goals.
+const PROMPT_ECHO = /thinking back on when|something (?:i|right now)|now we (?:will talk|have learned)|i remember when|summarizing what we|in brief|a question i would like|dreaming, i imagine|a thought surfaces|thinking to myself|this week i(?:'ll| will) talk|we used \(to discuss\)/i;
+function cleanGoal(g) {
+  const t = clip(oneLine(g || '').replace(/^(?:\s*(?:Something|Things|This goal|Now|A goal)[^:]{0,70}:\s*)+/i, '').replace(/<\/?think>?/g, ''), 120);
+  return meaningful(t) && !PROMPT_ECHO.test(t) && (t.match(/\S+/g) || []).length >= 4 ? t : '';
+}
 async function loopGoal() {
   const g = await selfResponse('Something I want to learn or do next:', 30, 0.9);
-  if (g && App.soul) {
-    App.soul.goals = [...(App.soul.goals || []), clip(g, 120)].slice(-8);   // her goals actually change
+  // A goal goes into the system prompt, so it has to be a real one: Fazzani's had become six copies of "Something right
+  // now I want to talk with each person We used (to discuss)…", a loop she then re-read every turn. Echoes of the
+  // prompt are stripped; it's kept only if it reads as a sentence and isn't one she already has.
+  const goal = cleanGoal(g);
+  if (goal && App.soul && !(App.soul.goals || []).some(x => x.toLowerCase() === goal.toLowerCase())) {
+    App.soul.goals = [...(App.soul.goals || []), goal].slice(-8);   // her goals actually change
   }
   return g;
 }
