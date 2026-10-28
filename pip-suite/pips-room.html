@@ -5481,8 +5481,11 @@ async function recallFor(text) {
     }
     // good enough? its meaning is close (centred cosine; with < 20 indexed there's no mean yet, so the ranking decides),
     // or the keywords match strongly, or it's one the matching summary points to. Best of those wins.
-    const few = Object.keys(R.vecs).length < 20, topCos = cos ? Math.max(...cos) : -1;
-    const good = i => (cos && cos[i] > -1 && (few ? cos[i] === topCos : cos[i] >= RECALL_MIN_COS)) || kw[i] >= RECALL_MIN_SUMMARY || linked.has(memKey(ex[i]));
+    // Or a clear winner just under the line: on the 0.4B "which town I live in" put Ninety Six first at 0.39, 0.07
+    // ahead of the next (an off-topic question tops out lower, and you asked them to remember).
+    const few = Object.keys(R.vecs).length < 20, sorted = cos ? cos.filter(c => c > -1).sort((a, b) => b - a) : [], topCos = sorted[0] ?? -1;
+    const clearWinner = c => c === topCos && c >= RECALL_MIN_COS - 0.07 && topCos - (sorted[1] ?? -1) >= 0.05;
+    const good = i => (cos && cos[i] > -1 && (few ? cos[i] === topCos : cos[i] >= RECALL_MIN_COS || clearWinner(cos[i]))) || kw[i] >= RECALL_MIN_SUMMARY || linked.has(memKey(ex[i]));
     let bi = -1;
     ex.forEach((m, i) => { const f = fused[i] * (0.8 + 0.2 * retention(m)); if (f > 0 && good(i) && (bi < 0 || f > fused[bi] * (0.8 + 0.2 * retention(ex[bi])))) bi = i; });
     if (bi >= 0) best = ex[bi];
