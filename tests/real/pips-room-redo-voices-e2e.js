@@ -1,6 +1,6 @@
 // Needs Playwright (npm i playwright). Run from the repo root:
 //   node tests/real/pips-room-redo-voices-e2e.js rwkv7-g1d-0.1b.pth some_soul.json
-// Redo, voices and speed. Checks: each reply shows tokens and tok/s; ↻ takes the reply back (living state
+// Redo, voices, speed and streaming. Checks: the reply streams in token by token; each reply shows tokens and tok/s; ↻ takes the reply back (living state
 // back to the exact token count and the exact state from before the turn, the exchange gone from memory)
 // and answers again; ✎ takes the turn back and puts your message in the box; only the latest turn has
 // ↻/✎; ▶ is on every bubble and reads with autoread off; the two voices have their own presets and sliders.
@@ -27,7 +27,14 @@ const [MODEL, SOUL] = process.argv.slice(2);
     plays: document.querySelectorAll('.msg-play').length, msgs: document.querySelectorAll('#conversation-area .message').length }));
 
   await say('Hi Fazzani! What is your favorite color?');
+  // streaming: their bubble fills in token by token, then becomes the finished message
+  await p.evaluate(() => { window.__frames = []; const orig = streamBubble;
+    streamBubble = () => { const s = orig(); return { update: t => { const el = document.querySelector('.message.pip.streaming');
+      if (el) __frames.push(el.children[1].textContent); s.update(t); }, remove: s.remove }; }; });
   await say('Tell me a little story about a frog.');
+  const frames = await p.evaluate(() => __frames);
+  ok(frames.length >= 3 && frames.every(f => f.endsWith('▍')) && new Set(frames).size >= 3 && !(await p.$('.message.pip.streaming')),
+     `the reply streams in (${frames.length} updates, e.g. ${JSON.stringify(frames[Math.floor(frames.length / 2)])}) and the stream bubble is replaced`);
   const a = await view();
   console.log(`reply: "${a.last}" · ${a.speed}`);
   ok(/^\d+ tok · [\d.]+ tok\/s$/.test(a.speed), `the reply shows tokens and speed ("${a.speed}")`);

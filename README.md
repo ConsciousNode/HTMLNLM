@@ -130,6 +130,34 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.17 — 2026-10-28 · Kehai Interim + Kham — streaming, documents, help, colors, and fixes from Jessica's phone test
+
+- **Replies stream in** token by token (the engine yields after every token; a ▍ cursor while writing). Developer console → *Stream replies*.
+- **Give them a text file** (Settings → Data Management).
+  - It's split into ~400-character passages and kept with their memories, so it travels in the soul file.
+  - Every reply, your message is matched against the passages by keyword, at no model cost. When your message is about the file ("what does the file say…", "the document", "I gave you"), the meaning search runs too.
+  - The best passage goes in as `System: From the document "…" (part 2 of 3): …`.
+  - Short files (≤ 3,000 tokens) can also be **read in**: fed into their living state once, so they've actually read it.
+- **Help** (the ? button): what everything does, plus tips for small models.
+- **Log & errors** (developer console): every error and warning, with Copy all. Copy all adds the browser, model and state size. A red badge counts new errors.
+- **Colors** (Settings → Look): Teal, Amber, Moss, Lilac, Ember and Paper (light), or your own accent, second accent, background, panels and text. Kept in this browser, not in the soul file.
+- **Per-turn settings** are saved on each exchange: model file, sampling, think, recall, speed, what was remembered, and whether a repeat was retried. Export data (JSON) includes them, and the Markdown export shows them in a small line under each reply.
+- **Fixes from Kham's phone test** (Jessica, G1 0.1B Q4_K_M):
+  - **A second `<think>` as the answer.** With quick thinking on, the page writes `<think></think>` and she then opened another reasoning block as her reply. Now an answer can never open with "<", in any thinking mode, and "think" can't follow "<" later in it. Banning only "think" wasn't enough: a state primed for `<think>` then opened `<div>`, `<listen>`, `<shrug>`…
+  - **The same reply three turns running** ("🌞️ How do you like bugs?"). A reply identical to one of their last three is taken back and said again once, warmer, with that line penalized.
+  - **Word salad in a new thread.** Reproduced: the new thread was seeded with summaries that were emoji soup ("🌞️ How… 🐛️ How… 🐞️ How…"), and her thoughts copied them. Summaries now have to read as real sentences before they're used as memory, in the thread bridge or in recall. They stay in the journal either way.
+  - **Lines ending in "/".** The summary prompt and the thread bridge joined things with " / ", and that went into the living state (Fazzani picked it up too: "❤️ / 😊"). Both now use plain sentences.
+  - **Their own name mid-line** ("🌞️ Hello! Jessica: 🌞️ Hello!") now ends the reply there, like a name at the start of a line already did.
+- **Measured** (`gguf-vs-pth.js`, same 98-token text):
+
+  | Comparison | Perplexity | KL |
+  |---|---|---|
+  | G1 0.1B: Q4_K_M vs its Q8_0 | 7.00 → 7.20 | 0.079 |
+  | G1d 0.1B: "better_quantization" Q4_K_M vs .pth | 6.97 → 7.57 | 0.10 |
+  | G1 vs G1d 0.1B (Q8 vs .pth) | 7.00 vs 6.97 | — |
+
+  For a 0.1B, Q8_0 (~210 MB) is the GGUF to use.
+
 ### v1.16 — 2026-10-28 · Kehai Interim + Kham — redo a turn, two voices, tok/s
 
 - **↻ and ✎ on the latest turn** (Pip's Room). ↻ takes the reply back and lets them answer again; ✎ takes it back and puts your message in the box to edit. RWKV makes this cheap: the engine never changes a state in place, so the state from just before the turn is kept as a reference and put back, exactly (the test compares the state itself). The exchange and its reasoning come out of memory, traits and mood go back; thoughts they had since stay in the journal.

@@ -29,6 +29,8 @@ node tests/real/pips-room-recall-e2e.js rwkv7-g1d-0.1b.pth fazzani_soul.json
 # ↻/✎ redo (state put back exactly), ▶ on bubbles, two voices, tok/s; and the readable exports (no model)
 node tests/real/pips-room-redo-voices-e2e.js rwkv7-g1d-0.1b.pth fazzani_soul.json
 node tests/real/pips-room-readable-export.js fazzani_soul.json
+# Documents: passages, keyword and meaning lookup, read-in (fixture: tests/fixtures/frog-pond-notes.txt)
+node tests/real/pips-room-documents-e2e.js rwkv7-g1d-0.1b.pth fazzani_soul.json
 ```
 
 Score = repeated 4-word phrases across the chat (an exact-line count missed the real failure: near-identical lines that differ by a word). Results on 2026-10-22, 8 turns: seed 7 32% → 0%, seed 23 3% → 0%, seed 11 0% → 0%.
