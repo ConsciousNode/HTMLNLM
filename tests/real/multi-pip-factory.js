@@ -44,6 +44,29 @@ const FAKE = `(() => {
   ok(s1.dialogue.every(d => d.gen && ['newline', 'eos', 'cap'].includes(d.gen.endedBy)), 'every line records how it ended');
   ok(/^filter-1/.test(s1.filter.version) &&Array.isArray(s1.dialogue[0].flags), 'export carries filter-1 flags');
   ok(s1.pips.every(x => x.fingerprint && x.systemBlock) && s1.run.seed === '420', 'provenance: fingerprint, system line, seed');
+  // interjections and pause/resume mid-turn (the Oct 27 two-loops bug): one loop, rotation intact, turn count kept
+  await p.evaluate(`ChatRoom.exported = true; ChatRoom.clear(); ChatRoom.addPip(mk('Fern'));`);
+  await p.evaluate(o => { Object.assign(DEV, { seed: '9', stateful: true }); document.getElementById('chat-topic').value = 'free';
+    document.getElementById('chat-turns').value = '12'; document.getElementById('chat-delay').value = '50'; ChatRoom.start(); }, {});
+  const midTurn = () => p.waitForFunction('!!document.getElementById("typing-indicator")', null, { timeout: 30000 });
+  await midTurn(); await p.waitForTimeout(120);
+  await p.evaluate(`ChatRoom.userMessage('frogs or toads?')`);
+  await p.waitForTimeout(150); await p.evaluate(`ChatRoom.pause()`); await p.waitForTimeout(30); await p.evaluate(`ChatRoom.pause()`);   // pause + resume mid-turn
+  await p.waitForTimeout(80); await p.evaluate(`ChatRoom.userMessage('say hi to the moss')`);
+  await p.waitForTimeout(40); await p.evaluate(`ChatRoom.pause()`); await p.waitForTimeout(400); await p.evaluate(`ChatRoom.pause()`);
+  await p.waitForFunction('!ChatRoom.isRunning', null, { timeout: 120000 });
+  const iv = await p.evaluate('ChatRoom.buildExport()');
+  const pipLines = iv.dialogue.filter(d => d.role === 'pip'), humans = iv.dialogue.filter(d => d.role === 'human').map(d => d.text);
+  const rot = ['Wren', 'Moss', 'Fern'];
+  ok(pipLines.length === 12, `exactly 12 Pip lines for 12 turns (${pipLines.length})`);
+  ok(pipLines.every((d, i) => d.speaker === rot[i % 3]), 'rotation never breaks: ' + pipLines.map(d => d.speaker[0]).join(''));
+  ok(JSON.stringify(humans) === JSON.stringify(['frogs or toads?', 'say hi to the moss']), 'each interjection appears once, in order');
+  ok(iv.run.segments.length === 1 && iv.run.endReason === 'complete', `one segment, ends complete (${iv.run.segments.length}, ${iv.run.endReason})`);
+  // when the chat isn't running, your line gets one answer from the next Pip in the rotation
+  await p.evaluate(`ChatRoom.userMessage('goodnight')`); await p.waitForFunction('ChatRoom.conversationHistory.at(-1).kind === "pip"', null, { timeout: 30000 });
+  const after = await p.evaluate('ChatRoom.conversationHistory.slice(-2).map(m => m.kind + ":" + m.sender)');
+  ok(after[0] === 'human:You' && after[1] === 'pip:Wren', 'idle: the next Pip in the rotation answers you once (' + after.join(', ') + ')');
+  await p.evaluate(`ChatRoom.exported = true; ChatRoom.clear(); ChatRoom.removePip('pip-Fern');`);
   // deck
   await p.evaluate(`ChatRoom.exported = true; ChatRoom.clear(); ChatRoom.addPip(mk('Clover'));`);
   await p.selectOption('#chat-topic', 'deck:frog-pond');

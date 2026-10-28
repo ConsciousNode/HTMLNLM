@@ -2215,6 +2215,9 @@ const ChatRoom = {
   pips: [],
   conversationHistory: [],
   isRunning: false,
+  loopId: 0,                // bumped by start/pause/stop: a loop whose id is stale exits after its current turn
+  turnLock: Promise.resolve(),   // one generation at a time (the loop and your interjections share the Pips' states)
+  pendingHuman: [],         // lines you typed while a Pip was speaking; said right after that turn
   isPaused: false,
   currentTurn: 0,
   maxTurns: 10,
@@ -2547,23 +2550,31 @@ const ChatRoom = {
     this.runChatLoop();
   },
   
+  // Run fn with no other generation in flight (the loop and your interjections queue up here).
+  withTurn(fn) { const t = this.turnLock.then(fn, fn); this.turnLock = t.catch(() => {}); return t; },
+  flushHuman() { for (const text of this.pendingHuman.splice(0)) this.addMessage(text, 'You', -1, 'human'); },
+  // One Pip speaks: the next in the rotation.
+  async speakTurn() {
+    const pip = this.pips[(this.currentTurn + this.turnOffset) % this.pips.length];
+    this.flushHuman();
+    this.showTyping(pip.name);
+    const context = pip.kind === 'rwkv7' && DEV.stateful ? '' : this.buildContext(pip);
+    const response = await this.generateResponse(pip, context);
+    this.hideTyping();
+    this.addMessage(response, pip.name, this.pips.indexOf(pip));
+    this.conversationHistory.at(-1).gen = pip._lastGen; this.refreshFlags();
+    this.currentTurn++;
+  },
+  
   async runChatLoop() {
-    while (this.isRunning && this.currentTurn < this.maxTurns && !this.isPaused) {
-      const pip = this.pips[(this.currentTurn + this.turnOffset) % this.pips.length];
-      
-      this.showTyping(pip.name);
-      
-      const context = pip.kind === 'rwkv7' && DEV.stateful ? '' : this.buildContext(pip);
-      const response = await this.generateResponse(pip, context);
-      
-      this.hideTyping();
-      this.addMessage(response, pip.name, this.pips.indexOf(pip));
-      this.conversationHistory.at(-1).gen = pip._lastGen; this.refreshFlags();
-      
-      this.currentTurn++;
-      
+    const id = ++this.loopId;     // any older loop sees a newer id and stops after the turn it's in
+    const live = () => id === this.loopId && this.isRunning && !this.isPaused;
+    while (live() && this.currentTurn < this.maxTurns) {
+      await this.withTurn(() => live() ? this.speakTurn() : null);
+      if (!live()) break;
       await new Promise(r => setTimeout(r, this.delay));
     }
+    if (id !== this.loopId) return;
     
     if (this.currentTurn >= this.maxTurns) {
       this.addMessage('Conversation complete.', 'system');
@@ -2574,6 +2585,7 @@ const ChatRoom = {
   
   pause() {
     this.isPaused = !this.isPaused;
+    this.loopId++;                  // the running loop finishes its current line, then stops
     document.getElementById('pause-chat-btn').textContent = this.isPaused ? '> Resume' : '|| Pause';
     log(this.isPaused ? 'Chat paused' : 'Chat resumed', 'info');
     
@@ -2585,6 +2597,7 @@ const ChatRoom = {
   stop() {
     if (this.run && this.isRunning && !this.run.endReason) this.run.endReason = 'stopped';
     if (this.run) this.run.endedAt = new Date().toISOString();
+    this.loopId++;
     this.isRunning = false;
     this.isPaused = false;
     document.getElementById('start-chat-btn').disabled = false;
@@ -2601,6 +2614,7 @@ const ChatRoom = {
     this.run = null;
     this.turnOffset = 0;
     this.resetLive();
+    this.pendingHuman = [];
     this.conversationHistory = [];
     this.currentTurn = 0;
     document.getElementById('chat-area').innerHTML = '';
@@ -2609,24 +2623,18 @@ const ChatRoom = {
     log('Chat cleared', 'info');
   },
   
+  // You speak. While the chat runs, your line joins between turns and the chat simply carries on: the
+  // next Pip in the rotation answers, nothing pauses, the turn count isn't reset. When the chat is
+  // stopped or paused, the next Pip in the rotation answers you once.
   async userMessage(text) {
-    this.addMessage(text, 'You', -1, 'human');
     if (this.run) this.run.interrupted = true;
-    
+    this.pendingHuman.push(text);
     if (this.isRunning && !this.isPaused) {
-      if (this.run) this.run.endReason = 'interrupted';
-      this.stop();
+      log('Your line goes in as soon as the current speaker finishes', 'info');
+      return;
     }
-    
-    const pip = this.pips[0];
-    if (pip) {
-      this.showTyping(pip.name);
-      const context = pip.kind === 'rwkv7' && DEV.stateful ? '' : this.buildContext(pip);   // stateless: ends with your line and "<Pip>:"
-      const response = await this.generateResponse(pip, context);
-      this.hideTyping();
-      this.addMessage(response, pip.name, 0);
-      this.conversationHistory.at(-1).gen = pip._lastGen; this.refreshFlags();
-    }
+    if (!this.pips.length) { this.flushHuman(); return; }
+    await this.withTurn(() => this.speakTurn());
   },
   
   // Live flags: re-run the filter over the chat so far and badge each line (runs like fragment streaks
