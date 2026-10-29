@@ -130,6 +130,10 @@ Part of [ConsciousNode SoftWorks](https://consciousnode.github.io) — computati
 
 ## Changelog
 
+### v1.18.2 — 2026-10-29 · Kehai Interim + Kham — a help button in every app
+
+- **Multi-Pip Chat, Junto Orchestrator and Dialogue Shelf** now have a **?** in the header, like Pip's Room. It opens a panel explaining every control, the scenario decks, the export's paper trail, the filter flags (they only point things out), and what each Shelf measure means. Escape or a tap outside closes it.
+
 ### v1.18.1 — 2026-10-28 · Kehai Interim + Kham — from Fazzani's first day on the G1d 0.1B Q8
 
 - **Goals have to be real goals.** Fazzani's eight goals had become prompt echoes ("Something right now I want to talk with each person We used (to discuss)…" ×3, "Now we will talk about…"), and goals go into her system prompt, so she re-read the loop every turn. A goal now has its prompt echo stripped. It's kept only if it reads as a sentence (4+ words), contains none of the page's own loop-prompt phrases, and isn't a repeat. Goals already stored stay in the soul and journal, but only real ones are fed back. On her actual goals: 8/8 echoes dropped, real goals kept.

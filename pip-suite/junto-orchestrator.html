@@ -642,6 +642,7 @@ header h1 span {
   <header>
     <h1>JUNTO <span>ORCHESTRATOR</span></h1>
     <div id="header-actions">
+      <button class="btn" id="kh-help-btn" title="Help: what everything does">?</button>
       <button class="btn" id="upload-btn">
         <span>+</span> Upload Pip Model
       </button>
@@ -2468,6 +2469,45 @@ document.getElementById('dev-btn').addEventListener('click', () => {
   const p = document.getElementById('dev-panel'); p.hidden = !p.hidden;
   if (!p.hidden) { buildDevPanel('dev-fields', DEV, DEV_FIELDS); refreshDevPrompt(); }
 });
+</script>
+
+<!-- Help panel (? in the header) -->
+<style id="kh-help-style">
+#kh-help-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:10000}
+#kh-help-overlay.on{display:flex}
+#kh-help{background:var(--bg-secondary,#141414);color:var(--text-main,#eee);border:1px solid var(--border,#333);border-radius:12px;max-width:640px;width:94%;max-height:86vh;display:flex;flex-direction:column;padding:16px 20px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#kh-help .kh-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+#kh-help .kh-title{font-weight:600;font-size:16px}
+#kh-help .kh-x{background:none;border:none;color:inherit;font-size:20px;cursor:pointer;padding:2px 8px}
+#kh-help .kh-body{overflow-y:auto;font-size:13.5px;line-height:1.6;color:var(--text-soft,var(--text-muted,#bbb))}
+#kh-help h3{color:var(--text-main,#eee);font-size:14px;margin:14px 0 4px}
+#kh-help ul,#kh-help ol{padding-left:18px}#kh-help li,#kh-help p{margin:4px 0}
+#kh-help b{color:var(--text-main,#eee)}
+</style>
+<div id="kh-help-overlay"><div id="kh-help"><div class="kh-head"><div class="kh-title">Junto Orchestrator: help</div><button class="kh-x" title="Close">✕</button></div><div class="kh-body">
+<p>A workbench for a small swarm of models working together: load several, give each one a role, and send the same question to all of them. Everything runs on this device.</p>
+<h3>Building the swarm</h3>
+<ul><li><b>+ Upload Pip Model</b> adds a node: an RWKV-7 checkpoint (.pth, .safetensors, .gguf) or an HTMLNLM .pip / .json. The same file loaded twice is shared in memory.</li>
+<li>Tap a node's <b>name</b> to rename it.</li>
+<li><b>Role</b> is that node's system prompt, e.g. "You are the frog expert. Answer briefly." With a role, a real RWKV-7 node gets <i>System: You are Frogbert. &lt;role&gt;</i> and answers in one line, chat-style. Without one, it simply continues your text, which is handy for seeing raw model behaviour.</li>
+<li><b>Test</b> runs one node on its own. <b>Remove</b> takes it out of the swarm.</li>
+<li>Each node shows its architecture, size, vocabulary and status, plus its soul if it came from a .pip file.</li></ul>
+<h3>Asking the swarm</h3>
+<p><b>@ Broadcast Query</b> sends your message to every node at once, so you can compare how differently sized, tuned or role-played models answer the same thing.</p>
+<h3>Sampling (Unified Inference)</h3>
+<ul><li><b>Temp</b>: higher is more varied, lower is steadier. <b>Top-P</b> keeps only the most likely words.</li>
+<li><b>Max Tokens</b> caps the answer length.</li>
+<li><b>Presence</b> and <b>Frequency</b> discourage repetition (0 = off; real RWKV-7 models only).</li></ul>
+<h3>Developer console (⚙ Dev)</h3>
+<p>Top-K, decay, context and system-prompt options, chat format, and the <b>exact last prompt</b> each node saw, with which node saw it.</p>
+<h3>A note on what they say</h3>
+<p>Small models tend to be charming and benign, and they're far too small to help anyone do harm. But now and then they say something strange or offensive. User discretion advised.</p></div></div></div>
+<script>
+(() => { const o = document.getElementById('kh-help-overlay'), b = document.getElementById('kh-help-btn');
+  const open = () => o.classList.add('on'), close = () => o.classList.remove('on');
+  b.addEventListener('click', open); o.querySelector('.kh-x').addEventListener('click', close);
+  o.addEventListener('click', e => { if (e.target === o) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); }); })();
 </script>
 </body>
 </html>

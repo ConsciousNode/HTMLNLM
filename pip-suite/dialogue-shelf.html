@@ -43,6 +43,7 @@ th { color:var(--muted); font-weight:500; } td.num { font-family:var(--mono); wh
   <div>
     <button class="btn" id="clear" disabled>Clear</button>
     <button class="btn primary" id="dl" disabled>⤓ Report</button>
+    <button class="btn" id="kh-help-btn" title="Help: what everything does">?</button>
   </div>
 </header>
 <main>
@@ -296,6 +297,41 @@ $('dl').onclick = () => {
   a.download = `diversity-report_${report.generatedAt.replace(/[:]/g, '').replace(/\..*$/, '')}_${report.runCount}runs.json`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 };
+</script>
+
+<!-- Help panel (? in the header) -->
+<style id="kh-help-style">
+#kh-help-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:10000}
+#kh-help-overlay.on{display:flex}
+#kh-help{background:var(--bg-secondary,#141414);color:var(--text-main,#eee);border:1px solid var(--border,#333);border-radius:12px;max-width:640px;width:94%;max-height:86vh;display:flex;flex-direction:column;padding:16px 20px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#kh-help .kh-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+#kh-help .kh-title{font-weight:600;font-size:16px}
+#kh-help .kh-x{background:none;border:none;color:inherit;font-size:20px;cursor:pointer;padding:2px 8px}
+#kh-help .kh-body{overflow-y:auto;font-size:13.5px;line-height:1.6;color:var(--text-soft,var(--text-muted,#bbb))}
+#kh-help h3{color:var(--text-main,#eee);font-size:14px;margin:14px 0 4px}
+#kh-help ul,#kh-help ol{padding-left:18px}#kh-help li,#kh-help p{margin:4px 0}
+#kh-help b{color:var(--text-main,#eee)}
+</style>
+<div id="kh-help-overlay"><div id="kh-help"><div class="kh-head"><div class="kh-title">Dialogue Shelf: help</div><button class="kh-x" title="Close">✕</button></div><div class="kh-body">
+<p>Compare several conversations exported from <b>Multi-Pip Chat</b> (⤓ Export) and see how alike or different they turned out. Nothing leaves this device.</p>
+<h3>How to use it</h3>
+<ol><li>Drop two or more export files on the shelf, or tap to pick them.</li>
+<li>Read the comparison.</li>
+<li><b>⤓ Report</b> downloads it. <b>Clear</b> empties the shelf.</li></ol>
+<h3>What it measures</h3>
+<ul><li><b>Distinct-1 / 2 / 3</b>: how varied the wording is. It's the share of single words, word pairs and word triples that are unique. Higher means less repetitive.</li>
+<li><b>Pairwise overlap</b>: how much two conversations share, phrase for phrase.</li>
+<li><b>Replayed openings</b>: runs that started word for word the same (the same seed and settings do that). It also notes when the replay length is the context window + 1: the chats stay identical until the window first has to drop a line.</li>
+<li><b>Recurring phrases</b>: four-word phrases that keep coming back, after any replayed opening.</li>
+<li><b>Invented names</b>: names the models made up that recur across runs.</li>
+<li><b>Flags</b>: each run's filter flags (speaker slips, garble, repeats, heavy themes and so on). These only point things out; nothing is changed.</li></ul>
+<p>Good for checking whether a batch of synthetic dialogue is genuinely varied, or for comparing settings (stateful vs. not, different seeds or temperatures).</p></div></div></div>
+<script>
+(() => { const o = document.getElementById('kh-help-overlay'), b = document.getElementById('kh-help-btn');
+  const open = () => o.classList.add('on'), close = () => o.classList.remove('on');
+  b.addEventListener('click', open); o.querySelector('.kh-x').addEventListener('click', close);
+  o.addEventListener('click', e => { if (e.target === o) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); }); })();
 </script>
 </body>
 </html>

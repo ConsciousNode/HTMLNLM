@@ -681,6 +681,7 @@ header h1 span {
   <header>
     <h1>MULTI-PIP <span>CHAT ROOM</span></h1>
     <div id="header-actions">
+      <button class="btn" id="kh-help-btn" title="Help: what everything does">?</button>
       <button class="btn" id="add-pip-btn">
         <span>+</span> Add Pip
       </button>
@@ -4779,6 +4780,53 @@ document.getElementById('deck-file').addEventListener('change', async e => {
 });
 document.getElementById('chat-temp').addEventListener('change', e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) DEV.temperature = v; });
 document.getElementById('chat-rep').addEventListener('change', e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { DEV.presence = v; DEV.frequency = v; } });
+</script>
+
+<!-- Help panel (? in the header) -->
+<style id="kh-help-style">
+#kh-help-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:10000}
+#kh-help-overlay.on{display:flex}
+#kh-help{background:var(--bg-secondary,#141414);color:var(--text-main,#eee);border:1px solid var(--border,#333);border-radius:12px;max-width:640px;width:94%;max-height:86vh;display:flex;flex-direction:column;padding:16px 20px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#kh-help .kh-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+#kh-help .kh-title{font-weight:600;font-size:16px}
+#kh-help .kh-x{background:none;border:none;color:inherit;font-size:20px;cursor:pointer;padding:2px 8px}
+#kh-help .kh-body{overflow-y:auto;font-size:13.5px;line-height:1.6;color:var(--text-soft,var(--text-muted,#bbb))}
+#kh-help h3{color:var(--text-main,#eee);font-size:14px;margin:14px 0 4px}
+#kh-help ul,#kh-help ol{padding-left:18px}#kh-help li,#kh-help p{margin:4px 0}
+#kh-help b{color:var(--text-main,#eee)}
+</style>
+<div id="kh-help-overlay"><div id="kh-help"><div class="kh-head"><div class="kh-title">Multi-Pip Chat: help</div><button class="kh-x" title="Close">✕</button></div><div class="kh-body">
+<p>Put several small language models in one room and let them talk, to each other and to you. Everything runs on this device. Nothing is sent anywhere.</p>
+<h3>Getting started</h3>
+<ul><li><b>+ Add Pip</b> loads a model: an RWKV-7 checkpoint (.pth, .safetensors, .gguf) or an HTMLNLM .pip / .json. Add the same file twice for two Pips; they share it in memory.</li>
+<li>Tap a Pip's <b>name</b> to rename it. <b>✎</b> gives it a note: who it is, what it cares about.</li>
+<li>Choose a <b>Topic</b>, the number of <b>Turns</b> and the <b>Delay</b> between them, then <b>Start Chat</b>. <b>Pause</b> and <b>Clear</b> do what they say.</li>
+<li>Type in the box to join in. Your line slips in between turns and the chat carries on. When the chat is idle, the next Pip in the rotation answers you.</li></ul>
+<h3>Settings</h3>
+<ul><li><b>Temperature</b>: higher is wilder, lower is steadier.</li>
+<li><b>Anti-repeat</b> nudges each Pip away from repeating itself (0 = off). It only applies to real RWKV-7 models.</li>
+<li><b>Voices</b>: each Pip reads its lines aloud in its own Webster voice, and the chat waits for each line to finish.</li>
+<li><b>Auto Chat</b> keeps the conversation going on its own.</li></ul>
+<h3>Scenario decks</h3>
+<p>The Topic menu also holds <b>decks</b>: a saved cast (names and notes), an opening line spoken by one of them, and optionally settings. Built-ins include <i>Frog pond</i>, <i>Kitchen lesson</i> and <i>Lost key</i>. Save your own, delete them, and download or load them to share.</p>
+<h3>Export and the paper trail</h3>
+<p><b>⤓ Export</b> saves the whole chat with a provenance stamp: the model file and its fingerprint, each Pip's note and system line, every sampler setting, the seed, and for every line how it ended (a line break, end of text, or hitting the length cap). It's made for studying conversations, or for making synthetic dialogue with a clean record of how it was produced.</p>
+<p>Lines get small <b>flags</b> (badges) from a filter that only ever <i>points things out</i>; it never changes or deletes anything. Flags include a Pip speaking for someone else, garbled text, repeats, links or markdown, and heavy themes.</p>
+<h3>Developer console (⚙ Dev)</h3>
+<ul><li>Sampler: temperature, top-P, top-K, penalties and decay, max tokens, context length, system prompt on/off, and <i>your name</i>.</li>
+<li><b>Seed</b>: the same seed, model and settings with no interruptions replays a chat word for word. Blank means random, but the seed is still recorded.</li>
+<li><b>Stateful</b> (on by default): each Pip keeps one memory state for the whole chat instead of re-reading the last few lines.</li>
+<li><b>Last prompt sent</b>: exactly what the model saw.</li></ul>
+<h3>A note on what they say</h3>
+<p>Small models tend to be charming and benign, and they're far too small to help anyone do harm. But they learned from a huge amount of human writing, so now and then they say something strange or offensive. User discretion advised. The flags help you spot it.</p>
+<h3>Compare chats</h3>
+<p>Drop several exports into <b>Dialogue Shelf</b> to see how alike or different the conversations turned out.</p></div></div></div>
+<script>
+(() => { const o = document.getElementById('kh-help-overlay'), b = document.getElementById('kh-help-btn');
+  const open = () => o.classList.add('on'), close = () => o.classList.remove('on');
+  b.addEventListener('click', open); o.querySelector('.kh-x').addEventListener('click', close);
+  o.addEventListener('click', e => { if (e.target === o) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); }); })();
 </script>
 </body>
 </html>
