@@ -38,7 +38,7 @@ Or download [`HTMLNLM.html`](https://github.com/ConsciousNode/HTMLNLM/blob/main/
 | **AdamW** | Mobile-friendly fallback optimizer, auto-selected on battery-constrained devices. |
 | **GRPO alignment** | Group Relative Policy Optimization — critic-free RL alignment with Z-score normalized advantages and KL divergence constraint. |
 | **BPE tokenizer** | Byte Pair Encoding compiled in a WebWorker — doesn't block the UI thread. |
-| **Pip Suite** | Companion tools: Junto orchestrator, multi-pip chat (now a dialogue factory), Pip's Room, Dialogue Shelf. |
+| **Pip Suite** | Companion tools: Junto orchestrator, multi-pip chat (now a dialogue factory), Pip's Room, Dialogue Shelf. **Released for everyone at [ConsciousNode/Pip-Suite](https://github.com/ConsciousNode/Pip-Suite)** ([open it](https://consciousnode.github.io/Pip-Suite/)), built from here with `tools/release-pip-suite.sh`. |
 
 ---
 
